@@ -1,0 +1,68 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: tax
+          POSTGRES_PASSWORD: tax  # pragma: allowlist secret
+          POSTGRES_DB: tax_copilot
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U tax -d tax_copilot"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements/dev.in
+
+      - name: Install pip-tools and dependencies
+        run: |
+          pip install pip-tools
+          pip-compile requirements/base.in -o requirements/base.txt -q
+          pip-compile requirements/dev.in -o requirements/dev.txt -q
+          pip install -r requirements/dev.txt
+          pip install -e .
+
+      - name: Lint (ruff)
+        run: |
+          ruff check src/
+          ruff format --check src/
+
+      - name: Type check (mypy)
+        run: mypy src/tax_copilot/core/
+
+      - name: Test
+        env:
+          DATABASE_URL: postgresql+asyncpg://tax:tax@localhost:5432/tax_copilot  # pragma: allowlist secret
+          REDIS_URL: redis://localhost:6379/0
+        run: pytest tests/ -v --tb=short
