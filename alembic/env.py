@@ -7,7 +7,7 @@ from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from tax_copilot.core.config import settings
-from tax_copilot.infra.database import Base  # noqa: F401 — registers all models
+from tax_copilot.infra.db.models import Base  # noqa: F401 — registers all models
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

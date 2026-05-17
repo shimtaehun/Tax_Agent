@@ -45,6 +45,12 @@ module = [
 ]
 ignore_missing_imports = true
 
+[[tool.mypy.overrides]]
+module = ["tax_copilot.core.auth"]
+# passlib/jose have no stubs; their return types are Any
+disallow_any_expr = false
+warn_return_any = false
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]

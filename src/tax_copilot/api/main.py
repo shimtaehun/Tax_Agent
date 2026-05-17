@@ -6,6 +6,9 @@ import structlog
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
+from tax_copilot.api.errors import register_exception_handlers
+from tax_copilot.api.v1.auth import router as auth_router
+from tax_copilot.api.v1.receipts import router as receipts_router
 from tax_copilot.core.config import settings
 from tax_copilot.core.logging import configure_logging, request_id_var
 
@@ -25,6 +28,11 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan,
 )
+
+register_exception_handlers(app)
+
+app.include_router(auth_router, prefix="/v1")
+app.include_router(receipts_router, prefix="/v1")
 
 
 @app.middleware("http")
