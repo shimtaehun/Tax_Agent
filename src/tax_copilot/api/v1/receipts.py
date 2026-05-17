@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, UploadFile
 from pydantic import BaseModel
@@ -41,31 +41,30 @@ async def upload_receipt(
     except Exception as e:
         raise DuplicateReceiptError(str(e)) from e
 
-    async with session.begin():
-        try:
-            receipt = await create_receipt(
-                session,
-                tenant_id=current_user.tenant_id,
-                uploaded_by=current_user.id,
-                file_path=file_path,
-                file_hash=file_hash,
-                original_filename=file.filename or "unknown",
-                mime_type=mime,
-                file_size_bytes=len(content),
-                status="PENDING",
-                created_at=datetime.now(UTC),
-                updated_at=datetime.now(UTC),
-            )
-            await log_audit_event(
-                session,
-                tenant_id=current_user.tenant_id,
-                actor_user_id=current_user.id,
-                receipt_id=receipt.id,
-                event_type="RECEIPT_UPLOADED",
-                payload={"filename": file.filename, "mime_type": mime, "size": len(content)},
-            )
-        except Exception as e:
-            raise DuplicateReceiptError("Receipt with this file already exists for tenant") from e
+    try:
+        receipt = await create_receipt(
+            session,
+            tenant_id=current_user.tenant_id,
+            uploaded_by=current_user.id,
+            file_path=file_path,
+            file_hash=file_hash,
+            original_filename=file.filename or "unknown",
+            mime_type=mime,
+            file_size_bytes=len(content),
+            status="PENDING",
+        )
+        await log_audit_event(
+            session,
+            tenant_id=current_user.tenant_id,
+            actor_user_id=current_user.id,
+            receipt_id=receipt.id,
+            event_type="RECEIPT_UPLOADED",
+            payload={"filename": file.filename, "mime_type": mime, "size": len(content)},
+        )
+        await session.commit()
+    except Exception as e:
+        await session.rollback()
+        raise DuplicateReceiptError("Receipt with this file already exists for tenant") from e
 
     return ReceiptResponse(
         id=receipt.id,

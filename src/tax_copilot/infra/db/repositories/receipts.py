@@ -69,7 +69,7 @@ async def log_audit_event(
         receipt_id=receipt_id,
         event_type=event_type,
         payload=payload,
-        created_at=datetime.now(UTC),
+        created_at=datetime.now(UTC).replace(tzinfo=None),
     )
     session.add(event)
     await session.flush()
