@@ -1,4 +1,5 @@
 from datetime import date, datetime
+from typing import Any
 
 from sqlalchemy import JSON, ForeignKey, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
@@ -29,7 +30,7 @@ class Receipt(Base, TimestampMixin):
     file_size_bytes: Mapped[int] = mapped_column(nullable=False)
 
     transaction_date: Mapped[date | None] = mapped_column(nullable=True)
-    parsed_data: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    parsed_data: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
 
     status: Mapped[str] = mapped_column(String(30), default="PENDING", index=True, nullable=False)
     langgraph_thread_id: Mapped[str | None] = mapped_column(String(150), nullable=True)
@@ -53,9 +54,9 @@ class TaxJudgment(Base):
     tenant_id: Mapped[int] = mapped_column(ForeignKey("tenants.id"), index=True, nullable=False)
     receipt_id: Mapped[int] = mapped_column(ForeignKey("receipts.id"), index=True, nullable=False)
 
-    decision_data: Mapped[dict] = mapped_column(JSON, nullable=False)
-    calculation_data: Mapped[dict | None] = mapped_column(JSON, nullable=True)
-    citations: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    decision_data: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    calculation_data: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    citations: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False, default=list)
 
     prompt_version: Mapped[str] = mapped_column(String(50), nullable=False)
     model_name: Mapped[str] = mapped_column(String(100), nullable=False)
@@ -73,5 +74,5 @@ class AuditEvent(Base):
     receipt_id: Mapped[int | None] = mapped_column(ForeignKey("receipts.id"), nullable=True)
 
     event_type: Mapped[str] = mapped_column(String(100), index=True, nullable=False)
-    payload: Mapped[dict] = mapped_column(JSON, nullable=False)
+    payload: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     created_at: Mapped[datetime] = mapped_column(nullable=False)

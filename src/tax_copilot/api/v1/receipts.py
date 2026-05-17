@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, UploadFile
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from tax_copilot.api.deps import get_current_user, get_db
+from tax_copilot.api.deps import get_current_user, get_db, require_admin
 from tax_copilot.core.exceptions import DuplicateReceiptError
 from tax_copilot.core.receipts.validation import validate_upload
 from tax_copilot.infra.db.models.user import User
@@ -20,6 +20,11 @@ class ReceiptResponse(BaseModel):
     original_filename: str
     file_size_bytes: int
     created_at: datetime
+
+
+class ReceiptStatusResponse(BaseModel):
+    id: int
+    status: str
 
 
 @router.post("", response_model=ReceiptResponse, status_code=201)
@@ -89,3 +94,39 @@ async def list_receipts_endpoint(
         )
         for r in receipts
     ]
+
+
+@router.get("/pending", response_model=list[ReceiptResponse])
+async def list_pending_receipts_endpoint(
+    session: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_admin),
+) -> list[ReceiptResponse]:
+    from tax_copilot.infra.db.repositories.receipts import list_pending_receipts
+
+    receipts = await list_pending_receipts(session, current_user.tenant_id)
+    return [
+        ReceiptResponse(
+            id=r.id,
+            status=r.status,
+            original_filename=r.original_filename,
+            file_size_bytes=r.file_size_bytes,
+            created_at=r.created_at,
+        )
+        for r in receipts
+    ]
+
+
+@router.get("/{receipt_id}/status", response_model=ReceiptStatusResponse)
+async def get_receipt_status_endpoint(
+    receipt_id: int,
+    session: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> ReceiptStatusResponse:
+    from fastapi import HTTPException, status
+
+    from tax_copilot.infra.db.repositories.receipts import get_receipt_status
+
+    receipt_status = await get_receipt_status(session, receipt_id, current_user.tenant_id)
+    if receipt_status is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Receipt not found")
+    return ReceiptStatusResponse(id=receipt_id, status=receipt_status)

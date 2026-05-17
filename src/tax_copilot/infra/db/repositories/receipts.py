@@ -1,4 +1,5 @@
 from datetime import UTC, datetime
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,6 +21,13 @@ async def get_receipt(session: AsyncSession, receipt_id: int, tenant_id: int) ->
     return result.scalar_one_or_none()
 
 
+async def get_receipt_status(session: AsyncSession, receipt_id: int, tenant_id: int) -> str | None:
+    result = await session.execute(
+        select(Receipt.status).where(Receipt.id == receipt_id, Receipt.tenant_id == tenant_id)
+    )
+    return result.scalar_one_or_none()
+
+
 async def list_receipts(
     session: AsyncSession, tenant_id: int, limit: int = 20, offset: int = 0
 ) -> list[Receipt]:
@@ -33,12 +41,25 @@ async def list_receipts(
     return list(result.scalars().all())
 
 
+async def list_pending_receipts(
+    session: AsyncSession, tenant_id: int, limit: int = 20, offset: int = 0
+) -> list[Receipt]:
+    result = await session.execute(
+        select(Receipt)
+        .where(Receipt.tenant_id == tenant_id, Receipt.status == "PENDING")
+        .order_by(Receipt.created_at.asc())
+        .limit(limit)
+        .offset(offset)
+    )
+    return list(result.scalars().all())
+
+
 async def log_audit_event(
     session: AsyncSession,
     *,
     tenant_id: int,
     event_type: str,
-    payload: dict,
+    payload: dict[str, Any],
     actor_user_id: int | None = None,
     receipt_id: int | None = None,
 ) -> AuditEvent:
