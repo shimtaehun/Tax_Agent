@@ -45,6 +45,10 @@ class Receipt(Base):
     # 계정과목 분류 결과
     account_code: Mapped[str | None] = mapped_column(String(20), nullable=True)
 
+    # 중복 감지 결과
+    duplicate_suspect: Mapped[bool] = mapped_column(default=False, server_default="false")
+    duplicate_receipt_ids: Mapped[list | None] = mapped_column(JSON, nullable=True)
+
     # 세무사 검토
     reviewed_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     reviewed_at: Mapped[datetime | None] = mapped_column(nullable=True)
