@@ -19,6 +19,7 @@ from tax_copilot.infra.db.models.audit_event import (
     AuditEvent,
 )
 from tax_copilot.infra.db.models.receipt import STATUS_PENDING, Receipt
+from tax_copilot.infra.db.models.user import ROLE_CLIENT
 from tax_copilot.infra.storage.local import save_receipt
 from tax_copilot.schemas.explanation import (
     AuditEvent as AuditEventSchema,
@@ -83,6 +84,9 @@ async def list_receipts(
 ) -> ReceiptListResponse:
     """영수증 목록을 조회한다. status로 필터링 가능."""
     base_where = [Receipt.tenant_id == current_user.tenant_id]
+    # client 역할은 자신의 고객사 영수증만 조회 가능
+    if current_user.role == ROLE_CLIENT and current_user.client_company_id is not None:
+        base_where.append(Receipt.client_company_id == current_user.client_company_id)
     if status:
         base_where.append(Receipt.status == status)
 
@@ -205,12 +209,10 @@ async def get_receipt_status(
     db: AsyncSession = Depends(get_db),
 ) -> ReceiptStatusResponse:
     """영수증 처리 상태를 조회한다."""
-    result = await db.execute(
-        select(Receipt).where(
-            Receipt.id == receipt_id,
-            Receipt.tenant_id == current_user.tenant_id,  # tenant 범위 강제
-        )
-    )
+    filters = [Receipt.id == receipt_id, Receipt.tenant_id == current_user.tenant_id]
+    if current_user.role == ROLE_CLIENT and current_user.client_company_id is not None:
+        filters.append(Receipt.client_company_id == current_user.client_company_id)
+    result = await db.execute(select(Receipt).where(*filters))
     receipt = result.scalar_one_or_none()
     if receipt is None:
         raise ValidationError(f"영수증 {receipt_id}를 찾을 수 없습니다.")
