@@ -41,6 +41,8 @@ def _to_status_response(r: Receipt) -> ReceiptStatusResponse:
         review_comment=r.review_comment,
         account_code=r.account_code,
         account_code_reason=r.parsed_data.get("account_code_reason") if r.parsed_data else None,
+        duplicate_suspect=r.duplicate_suspect,
+        duplicate_receipt_ids=r.duplicate_receipt_ids or [],
         created_at=r.created_at,
         updated_at=r.updated_at,
     )

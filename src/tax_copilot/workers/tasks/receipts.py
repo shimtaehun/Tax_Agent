@@ -159,6 +159,10 @@ async def _run_workflow(
         is_interrupted = "__interrupt__" in final_state
         requires_human = final_state.get("requires_human", False)
 
+        # 중복 감지 결과는 상태와 무관하게 항상 저장한다
+        receipt.duplicate_suspect = final_state.get("duplicate_suspect", False)
+        receipt.duplicate_receipt_ids = final_state.get("duplicate_receipt_ids") or []
+
         if is_interrupted or requires_human:
             receipt.status = STATUS_NEEDS_REVIEW
         elif final_decision:

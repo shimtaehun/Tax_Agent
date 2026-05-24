@@ -29,6 +29,8 @@ class ReceiptStatusResponse(BaseModel):
     review_comment: str | None
     account_code: str | None = None
     account_code_reason: str | None = None
+    duplicate_suspect: bool = False
+    duplicate_receipt_ids: list[int] = []
     created_at: datetime
     updated_at: datetime
 
