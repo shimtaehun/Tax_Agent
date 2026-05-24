@@ -13,9 +13,21 @@ from tax_copilot.audit.events import record_event
 from tax_copilot.core.exceptions import DuplicateReceiptError, ValidationError
 from tax_copilot.core.receipts.validation import compute_file_hash, validate_receipt_file
 from tax_copilot.infra.database import AsyncSessionLocal
-from tax_copilot.infra.db.models.audit_event import ACCOUNT_CODE_UPDATED, RECEIPT_UPLOADED
+from tax_copilot.infra.db.models.audit_event import (
+    ACCOUNT_CODE_UPDATED,
+    RECEIPT_UPLOADED,
+    AuditEvent,
+)
 from tax_copilot.infra.db.models.receipt import STATUS_PENDING, Receipt
 from tax_copilot.infra.storage.local import save_receipt
+from tax_copilot.schemas.explanation import (
+    AuditEvent as AuditEventSchema,
+)
+from tax_copilot.schemas.explanation import (
+    CitationResponse,
+    DecisionSummary,
+    ExplanationResponse,
+)
 from tax_copilot.schemas.receipts import (
     AccountCodeUpdateRequest,
     BatchReceiptResult,
@@ -363,6 +375,90 @@ async def batch_upload_receipts(
         skipped_count=skipped,
         error_count=errors,
         results=results,
+    )
+
+
+@router.get("/{receipt_id}/explanation", response_model=ExplanationResponse)
+async def get_receipt_explanation(
+    receipt_id: int,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> ExplanationResponse:
+    """영수증 판단 근거 및 처리 이력을 반환한다."""
+    result = await db.execute(
+        select(Receipt).where(
+            Receipt.id == receipt_id,
+            Receipt.tenant_id == current_user.tenant_id,
+        )
+    )
+    receipt = result.scalar_one_or_none()
+    if receipt is None:
+        from fastapi import HTTPException
+
+        raise HTTPException(status_code=404, detail="영수증을 찾을 수 없습니다.")
+
+    # 감사 이벤트 조회
+    events_result = await db.execute(
+        select(AuditEvent)
+        .where(
+            AuditEvent.receipt_id == receipt_id,
+            AuditEvent.tenant_id == current_user.tenant_id,
+        )
+        .order_by(AuditEvent.created_at)
+    )
+    events = events_result.scalars().all()
+
+    parsed = receipt.parsed_data or {}
+
+    decision: DecisionSummary | None = None
+    citations: list[CitationResponse] = []
+    risk_flags: list[str] = []
+
+    if parsed:
+        decision = DecisionSummary(
+            vat_creditable=parsed.get("vat_creditable"),
+            expense_deductible=parsed.get("expense_deductible"),
+            account_code=parsed.get("account_code"),
+            account_code_reason=parsed.get("account_code_reason"),
+            evidence_type=parsed.get("evidence_type", "unknown"),
+            evidence_status=parsed.get("evidence_status", "unknown"),
+            confidence=float(parsed.get("confidence", 0.0)),
+            prompt_version=str(parsed.get("prompt_version", "")),
+            model_name=str(parsed.get("model_name", "")),
+            law_corpus_version=str(parsed.get("law_corpus_version", "")),
+            calculation_result=parsed.get("calculation_result"),
+            human_approved=parsed.get("human_approved"),
+            human_comment=parsed.get("human_comment"),
+        )
+        for c in parsed.get("citations", []):
+            citations.append(
+                CitationResponse(
+                    chunk_id=c.get("chunk_id", ""),
+                    law_name=c.get("law_name", ""),
+                    article_no=c.get("article_no"),
+                    paragraph_no=c.get("paragraph_no"),
+                    effective_from=c["effective_from"],
+                    effective_to=c.get("effective_to"),
+                    quoted_text=c.get("quoted_text", ""),
+                )
+            )
+        risk_flags = list(parsed.get("risk_flags", []))
+
+    return ExplanationResponse(
+        receipt_id=receipt_id,
+        status=receipt.status,
+        decision=decision,
+        citations=citations,
+        risk_flags=risk_flags,
+        audit_trail=[
+            AuditEventSchema(
+                event_type=e.event_type,
+                actor_user_id=e.actor_user_id,
+                created_at=e.created_at,
+                payload=e.payload,
+            )
+            for e in events
+        ],
     )
 
 
