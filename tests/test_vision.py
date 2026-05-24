@@ -555,6 +555,219 @@ class TestAgentStateDuplicateFields:
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# duplicate_check_node 테스트
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+class TestDuplicateCheckNode:
+    async def test_detects_duplicate_by_name_and_amount(self) -> None:
+        """동일 금액 + 유사 가맹점명 → suspect=True."""
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        from tax_copilot.agents.nodes.duplicate_check import duplicate_check_node
+
+        mock_receipt = MagicMock()
+        mock_receipt.id = 42
+        mock_receipt.parsed_data = {
+            "merchant_name": "스타벅스강남점",
+            "total_amount_krw": 5500,
+        }
+
+        mock_scalars = MagicMock()
+        mock_scalars.all.return_value = [mock_receipt]
+        mock_execute_result = MagicMock()
+        mock_execute_result.scalars.return_value = mock_scalars
+
+        mock_db = AsyncMock()
+        mock_db.execute.return_value = mock_execute_result
+
+        mock_cm = MagicMock()
+        mock_cm.__aenter__ = AsyncMock(return_value=mock_db)
+        mock_cm.__aexit__ = AsyncMock(return_value=False)
+
+        state = AgentState(
+            tenant_id=1,
+            receipt_id=1,
+            file_path="/tmp/t.jpg",  # noqa: S108
+            file_hash="abc",
+            attempt_number=1,
+            transaction_date=None,
+            law_as_of_date=None,
+            law_corpus_version="v1",
+            image_quality="ok",
+            parsed_receipt={
+                "merchant_name": "스타벅스",
+                "total_amount_krw": 5500,
+                "extraction_confidence": 0.95,
+            },
+            retrieval_query=None,
+            relevant_laws=[],
+            calculation_result=None,
+            draft_decision=None,
+            final_decision=None,
+            requires_human=False,
+            error_message=None,
+            messages=[],
+        )
+
+        with patch(
+            "tax_copilot.agents.nodes.duplicate_check.AsyncSessionLocal",
+            return_value=mock_cm,
+        ):
+            result = await duplicate_check_node(state)
+
+        assert result["duplicate_suspect"] is True
+        assert 42 in result["duplicate_receipt_ids"]
+
+    async def test_different_amount_not_duplicate(self) -> None:
+        """금액이 다르면 가맹점명이 같아도 중복 아님."""
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        from tax_copilot.agents.nodes.duplicate_check import duplicate_check_node
+
+        mock_receipt = MagicMock()
+        mock_receipt.id = 42
+        mock_receipt.parsed_data = {
+            "merchant_name": "스타벅스",
+            "total_amount_krw": 9900,
+        }
+
+        mock_scalars = MagicMock()
+        mock_scalars.all.return_value = [mock_receipt]
+        mock_execute_result = MagicMock()
+        mock_execute_result.scalars.return_value = mock_scalars
+
+        mock_db = AsyncMock()
+        mock_db.execute.return_value = mock_execute_result
+
+        mock_cm = MagicMock()
+        mock_cm.__aenter__ = AsyncMock(return_value=mock_db)
+        mock_cm.__aexit__ = AsyncMock(return_value=False)
+
+        state = AgentState(
+            tenant_id=1,
+            receipt_id=1,
+            file_path="/tmp/t.jpg",  # noqa: S108
+            file_hash="abc",
+            attempt_number=1,
+            transaction_date=None,
+            law_as_of_date=None,
+            law_corpus_version="v1",
+            image_quality="ok",
+            parsed_receipt={
+                "merchant_name": "스타벅스",
+                "total_amount_krw": 5500,
+                "extraction_confidence": 0.95,
+            },
+            retrieval_query=None,
+            relevant_laws=[],
+            calculation_result=None,
+            draft_decision=None,
+            final_decision=None,
+            requires_human=False,
+            error_message=None,
+            messages=[],
+        )
+
+        with patch(
+            "tax_copilot.agents.nodes.duplicate_check.AsyncSessionLocal",
+            return_value=mock_cm,
+        ):
+            result = await duplicate_check_node(state)
+
+        assert result["duplicate_suspect"] is False
+        assert result["duplicate_receipt_ids"] == []
+
+    async def test_low_confidence_skips_check(self) -> None:
+        """confidence < 0.75 이면 DB 조회 없이 통과."""
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        from tax_copilot.agents.nodes.duplicate_check import duplicate_check_node
+
+        state = AgentState(
+            tenant_id=1,
+            receipt_id=1,
+            file_path="/tmp/t.jpg",  # noqa: S108
+            file_hash="abc",
+            attempt_number=1,
+            transaction_date=None,
+            law_as_of_date=None,
+            law_corpus_version="v1",
+            image_quality="ok",
+            parsed_receipt={
+                "merchant_name": "스타벅스",
+                "total_amount_krw": 5500,
+                "extraction_confidence": 0.5,
+            },
+            retrieval_query=None,
+            relevant_laws=[],
+            calculation_result=None,
+            draft_decision=None,
+            final_decision=None,
+            requires_human=False,
+            error_message=None,
+            messages=[],
+        )
+
+        mock_cm = MagicMock()
+        mock_cm.__aenter__ = AsyncMock()
+        mock_cm.__aexit__ = AsyncMock(return_value=False)
+
+        with patch(
+            "tax_copilot.agents.nodes.duplicate_check.AsyncSessionLocal",
+            return_value=mock_cm,
+        ) as mock_session:
+            result = await duplicate_check_node(state)
+
+        mock_session.assert_not_called()
+        assert result["duplicate_suspect"] is False
+
+    async def test_no_merchant_name_skips_check(self) -> None:
+        """merchant_name 없으면 중복 감지 생략."""
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        from tax_copilot.agents.nodes.duplicate_check import duplicate_check_node
+
+        state = AgentState(
+            tenant_id=1,
+            receipt_id=1,
+            file_path="/tmp/t.jpg",  # noqa: S108
+            file_hash="abc",
+            attempt_number=1,
+            transaction_date=None,
+            law_as_of_date=None,
+            law_corpus_version="v1",
+            image_quality="ok",
+            parsed_receipt={
+                "merchant_name": None,
+                "total_amount_krw": 5500,
+                "extraction_confidence": 0.95,
+            },
+            retrieval_query=None,
+            relevant_laws=[],
+            calculation_result=None,
+            draft_decision=None,
+            final_decision=None,
+            requires_human=False,
+            error_message=None,
+            messages=[],
+        )
+
+        mock_cm = MagicMock()
+        mock_cm.__aenter__ = AsyncMock()
+        mock_cm.__aexit__ = AsyncMock(return_value=False)
+
+        with patch(
+            "tax_copilot.agents.nodes.duplicate_check.AsyncSessionLocal",
+            return_value=mock_cm,
+        ) as mock_session:
+            result = await duplicate_check_node(state)
+
+        mock_session.assert_not_called()
+        assert result["duplicate_suspect"] is False
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # 헬퍼 함수
 # ──────────────────────────────────────────────────────────────────────────────
 
