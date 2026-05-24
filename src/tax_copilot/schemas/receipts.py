@@ -2,6 +2,8 @@ from datetime import date, datetime
 
 from pydantic import BaseModel
 
+from tax_copilot.core.tax.schemas import AccountCode
+
 
 class ReceiptUploadResponse(BaseModel):
     receipt_id: int
@@ -34,3 +36,7 @@ class ReceiptStatusResponse(BaseModel):
 class ReceiptListResponse(BaseModel):
     items: list[ReceiptStatusResponse]
     total: int
+
+
+class AccountCodeUpdateRequest(BaseModel):
+    account_code: AccountCode

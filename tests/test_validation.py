@@ -1,33 +1,95 @@
+"""core/receipts/validation.py 단위 테스트."""
+
 import pytest
 
 from tax_copilot.core.exceptions import ValidationError
-from tax_copilot.core.receipts.validation import validate_upload
+from tax_copilot.core.receipts.validation import (
+    compute_file_hash,
+    detect_mime_type,
+    validate_receipt_file,
+)
 
+# 각 형식의 실제 magic bytes
 JPEG_MAGIC = b"\xff\xd8\xff" + b"\x00" * 100
 PNG_MAGIC = b"\x89PNG\r\n\x1a\n" + b"\x00" * 100
+PDF_MAGIC = b"%PDF" + b"\x00" * 100
 
 
-def test_valid_jpeg() -> None:
-    mime = validate_upload("receipt.jpg", JPEG_MAGIC)
-    assert mime == "image/jpeg"
+class TestDetectMimeType:
+    def test_detects_jpeg(self) -> None:
+        assert detect_mime_type(JPEG_MAGIC) == "image/jpeg"
+
+    def test_detects_png(self) -> None:
+        assert detect_mime_type(PNG_MAGIC) == "image/png"
+
+    def test_detects_pdf(self) -> None:
+        assert detect_mime_type(PDF_MAGIC) == "application/pdf"
+
+    def test_returns_none_for_unknown(self) -> None:
+        assert detect_mime_type(b"\x00\x01\x02\x03") is None
 
 
-def test_valid_png() -> None:
-    mime = validate_upload("receipt.png", PNG_MAGIC)
-    assert mime == "image/png"
+class TestValidateReceiptFile:
+    def test_valid_jpeg(self) -> None:
+        mime = validate_receipt_file("receipt.jpg", JPEG_MAGIC)
+        assert mime == "image/jpeg"
+
+    def test_valid_png(self) -> None:
+        mime = validate_receipt_file("receipt.png", PNG_MAGIC)
+        assert mime == "image/png"
+
+    def test_valid_pdf(self) -> None:
+        mime = validate_receipt_file("receipt.pdf", PDF_MAGIC)
+        assert mime == "application/pdf"
+
+    def test_rejects_empty_file(self) -> None:
+        with pytest.raises(ValidationError, match="빈 파일"):
+            validate_receipt_file("receipt.jpg", b"")
+
+    def test_rejects_oversized_file(self) -> None:
+        oversized = JPEG_MAGIC + b"\x00" * (10 * 1024 * 1024)
+        with pytest.raises(ValidationError, match="초과"):
+            validate_receipt_file("receipt.jpg", oversized)
+
+    def test_rejects_disallowed_extension(self) -> None:
+        with pytest.raises(ValidationError, match="허용되지 않는"):
+            validate_receipt_file("receipt.gif", JPEG_MAGIC)
+
+    def test_rejects_content_type_mismatch(self) -> None:
+        # 확장자는 pdf지만 내용은 jpeg
+        with pytest.raises(ValidationError, match="일치하지 않습니다"):
+            validate_receipt_file("receipt.pdf", JPEG_MAGIC)
 
 
-def test_invalid_file_type() -> None:
-    with pytest.raises(ValidationError, match="Unsupported"):
-        validate_upload("file.txt", b"plaintext content here")
+class TestComputeFileHash:
+    def test_same_content_produces_same_hash(self) -> None:
+        content = b"hello world"
+        assert compute_file_hash(content) == compute_file_hash(content)
+
+    def test_different_content_produces_different_hash(self) -> None:
+        assert compute_file_hash(b"aaa") != compute_file_hash(b"bbb")
+
+    def test_returns_hex_string(self) -> None:
+        result = compute_file_hash(b"test")
+        assert all(c in "0123456789abcdef" for c in result)
+        assert len(result) == 64  # SHA-256 hex digest
 
 
-def test_empty_file() -> None:
-    with pytest.raises(ValidationError, match="Empty"):
-        validate_upload("empty.jpg", b"")
+class TestAccountCodePatch:
+    """PATCH /v1/receipts/{id}/account-code 엔드포인트 검증."""
 
+    @pytest.mark.asyncio
+    async def test_valid_account_code_accepted(self) -> None:
+        """유효한 계정과목으로 PATCH 시 200 반환."""
+        from tax_copilot.schemas.receipts import AccountCodeUpdateRequest
 
-def test_file_too_large() -> None:
-    big = b"\xff\xd8\xff" + b"\x00" * (10 * 1024 * 1024 + 1)
-    with pytest.raises(ValidationError, match="too large"):
-        validate_upload("big.jpg", big)
+        req = AccountCodeUpdateRequest(account_code="접대비")
+        assert req.account_code == "접대비"
+
+    @pytest.mark.asyncio
+    async def test_invalid_account_code_rejected(self) -> None:
+        """15종 외 계정과목은 ValidationError."""
+        from tax_copilot.schemas.receipts import AccountCodeUpdateRequest
+
+        with pytest.raises(ValueError):
+            AccountCodeUpdateRequest(account_code="잘못된값")

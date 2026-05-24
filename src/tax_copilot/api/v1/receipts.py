@@ -7,10 +7,11 @@ from tax_copilot.api.deps import CurrentUser, get_current_user, get_db
 from tax_copilot.audit.events import record_event
 from tax_copilot.core.exceptions import DuplicateReceiptError, ValidationError
 from tax_copilot.core.receipts.validation import compute_file_hash, validate_receipt_file
-from tax_copilot.infra.db.models.audit_event import RECEIPT_UPLOADED
+from tax_copilot.infra.db.models.audit_event import ACCOUNT_CODE_UPDATED, RECEIPT_UPLOADED
 from tax_copilot.infra.db.models.receipt import STATUS_PENDING, Receipt
 from tax_copilot.infra.storage.local import save_receipt
 from tax_copilot.schemas.receipts import (
+    AccountCodeUpdateRequest,
     ReceiptListResponse,
     ReceiptStatusResponse,
     ReceiptUploadResponse,
@@ -190,4 +191,46 @@ async def get_receipt_status(
     if receipt is None:
         raise ValidationError(f"영수증 {receipt_id}를 찾을 수 없습니다.")
 
+    return _to_status_response(receipt)
+
+
+@router.patch("/{receipt_id}/account-code", response_model=ReceiptStatusResponse)
+async def update_account_code(
+    receipt_id: int,
+    body: AccountCodeUpdateRequest,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> ReceiptStatusResponse:
+    """세무사가 계정과목을 직접 수정 확정한다."""
+    result = await db.execute(
+        select(Receipt).where(
+            Receipt.id == receipt_id,
+            Receipt.tenant_id == current_user.tenant_id,
+        )
+    )
+    receipt = result.scalar_one_or_none()
+    if receipt is None:
+        raise ValidationError(f"영수증 {receipt_id}를 찾을 수 없습니다.")
+
+    old_code = receipt.account_code
+    receipt.account_code = body.account_code
+
+    await record_event(
+        db,
+        tenant_id=current_user.tenant_id,
+        event_type=ACCOUNT_CODE_UPDATED,
+        actor_user_id=current_user.user_id,
+        receipt_id=receipt.id,
+        payload={"old": old_code, "new": body.account_code},
+    )
+
+    await db.commit()
+    await db.refresh(receipt)
+
+    logger.info(
+        "receipt.account_code_updated",
+        receipt_id=receipt_id,
+        old=old_code,
+        new=body.account_code,
+    )
     return _to_status_response(receipt)
