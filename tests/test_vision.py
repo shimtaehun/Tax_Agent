@@ -520,6 +520,41 @@ class TestTaxDecisionAccountCode:
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# AgentState duplicate 필드 테스트
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+class TestAgentStateDuplicateFields:
+    def test_state_has_duplicate_suspect_field(self) -> None:
+        from tax_copilot.agents.state import AgentState
+
+        state = AgentState(
+            tenant_id=1,
+            receipt_id=1,
+            file_path="/tmp/t.jpg",  # noqa: S108
+            file_hash="abc",
+            attempt_number=1,
+            transaction_date=None,
+            law_as_of_date=None,
+            law_corpus_version="v1",
+            image_quality=None,
+            parsed_receipt=None,
+            retrieval_query=None,
+            relevant_laws=[],
+            calculation_result=None,
+            draft_decision=None,
+            final_decision=None,
+            requires_human=False,
+            error_message=None,
+            messages=[],
+            duplicate_suspect=True,
+            duplicate_receipt_ids=[42, 99],
+        )
+        assert state["duplicate_suspect"] is True
+        assert state["duplicate_receipt_ids"] == [42, 99]
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # 헬퍼 함수
 # ──────────────────────────────────────────────────────────────────────────────
 
