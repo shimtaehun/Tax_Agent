@@ -35,6 +35,9 @@ class Receipt(Base):
     transaction_date: Mapped[date | None] = mapped_column(nullable=True)
     parsed_data: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
+    # 일괄 업로드 배치 식별자 (단건 업로드 시 NULL)
+    batch_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+
     # 처리 상태
     status: Mapped[str] = mapped_column(String(30), default=STATUS_PENDING, index=True)
     langgraph_thread_id: Mapped[str | None] = mapped_column(String(150), nullable=True)

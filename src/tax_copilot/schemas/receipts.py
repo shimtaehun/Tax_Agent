@@ -42,3 +42,19 @@ class ReceiptListResponse(BaseModel):
 
 class AccountCodeUpdateRequest(BaseModel):
     account_code: AccountCode
+
+
+class BatchReceiptResult(BaseModel):
+    filename: str
+    receipt_id: int | None = None
+    status: str  # "queued" | "skipped" | "error"
+    reason: str | None = None
+
+
+class BatchUploadResponse(BaseModel):
+    batch_id: str
+    total: int
+    queued_count: int
+    skipped_count: int
+    error_count: int
+    results: list[BatchReceiptResult]

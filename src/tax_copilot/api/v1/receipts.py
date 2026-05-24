@@ -1,3 +1,5 @@
+import uuid
+
 import structlog
 from fastapi import APIRouter, Depends, Query, UploadFile
 from sqlalchemy import func, select, update
@@ -12,11 +14,15 @@ from tax_copilot.infra.db.models.receipt import STATUS_PENDING, Receipt
 from tax_copilot.infra.storage.local import save_receipt
 from tax_copilot.schemas.receipts import (
     AccountCodeUpdateRequest,
+    BatchReceiptResult,
+    BatchUploadResponse,
     ReceiptListResponse,
     ReceiptStatusResponse,
     ReceiptUploadResponse,
 )
 from tax_copilot.workers.tasks.receipts import dispatch_receipt_task
+
+_BATCH_MAX_FILES = 20
 
 logger = structlog.get_logger(__name__)
 router = APIRouter(prefix="/receipts", tags=["receipts"])
@@ -236,3 +242,121 @@ async def update_account_code(
         new=body.account_code,
     )
     return _to_status_response(receipt)
+
+
+@router.post("/batch", response_model=BatchUploadResponse, status_code=201)
+async def batch_upload_receipts(
+    files: list[UploadFile],
+    client_company_id: int,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> BatchUploadResponse:
+    """최대 20개 파일을 한 번에 업로드한다.
+
+    파일별로 독립적으로 처리한다:
+    - 중복 파일은 skipped 처리 (전체 배치를 실패시키지 않음)
+    - 유효하지 않은 파일은 error 처리
+    """
+    if len(files) > _BATCH_MAX_FILES:
+        raise ValidationError(f"한 번에 최대 {_BATCH_MAX_FILES}개까지 업로드할 수 있습니다.")
+
+    batch_id = str(uuid.uuid4())
+    results: list[BatchReceiptResult] = []
+    # 커밋 후 Celery 디스패치에 필요한 정보를 추적
+    dispatch_queue: list[tuple[int, str, str]] = []  # (receipt_id, file_path, file_hash)
+
+    for file in files:
+        filename = file.filename or "unknown"
+        try:
+            content = await file.read()
+            mime = validate_receipt_file(filename, content)
+            file_hash = compute_file_hash(content)
+
+            existing = await db.execute(
+                select(Receipt).where(
+                    Receipt.tenant_id == current_user.tenant_id,
+                    Receipt.file_hash == file_hash,
+                )
+            )
+            if existing.scalar_one_or_none() is not None:
+                results.append(
+                    BatchReceiptResult(filename=filename, status="skipped", reason="중복 파일")
+                )
+                continue
+
+            ext = filename.rsplit(".", 1)[-1].lower()
+            file_path = save_receipt(current_user.tenant_id, file_hash, ext, content)
+
+            receipt = Receipt(
+                tenant_id=current_user.tenant_id,
+                client_company_id=client_company_id,
+                uploaded_by=current_user.user_id,
+                file_path=file_path,
+                file_hash=file_hash,
+                original_filename=filename,
+                mime_type=mime,
+                file_size_bytes=len(content),
+                status=STATUS_PENDING,
+                batch_id=batch_id,
+            )
+            db.add(receipt)
+            await db.flush()
+
+            await record_event(
+                db,
+                tenant_id=current_user.tenant_id,
+                event_type=RECEIPT_UPLOADED,
+                actor_user_id=current_user.user_id,
+                receipt_id=receipt.id,
+                payload={
+                    "filename": filename,
+                    "mime_type": mime,
+                    "file_size_bytes": len(content),
+                    "client_company_id": client_company_id,
+                    "batch_id": batch_id,
+                },
+            )
+
+            results.append(
+                BatchReceiptResult(filename=filename, receipt_id=receipt.id, status="queued")
+            )
+            dispatch_queue.append((receipt.id, file_path, file_hash))
+
+        except Exception as exc:
+            results.append(BatchReceiptResult(filename=filename, status="error", reason=str(exc)))
+
+    await db.commit()
+
+    # Celery 태스크 디스패치 (커밋 이후)
+    for receipt_id, file_path, file_hash in dispatch_queue:
+        try:
+            dispatch_receipt_task(
+                tenant_id=current_user.tenant_id,
+                receipt_id=receipt_id,
+                file_path=file_path,
+                file_hash=file_hash,
+            )
+        except Exception:
+            logger.exception("batch.dispatch_failed", receipt_id=receipt_id)
+
+    queued = sum(1 for r in results if r.status == "queued")
+    skipped = sum(1 for r in results if r.status == "skipped")
+    errors = sum(1 for r in results if r.status == "error")
+
+    logger.info(
+        "batch.uploaded",
+        batch_id=batch_id,
+        total=len(files),
+        queued=queued,
+        skipped=skipped,
+        errors=errors,
+    )
+
+    return BatchUploadResponse(
+        batch_id=batch_id,
+        total=len(files),
+        queued_count=queued,
+        skipped_count=skipped,
+        error_count=errors,
+        results=results,
+    )
