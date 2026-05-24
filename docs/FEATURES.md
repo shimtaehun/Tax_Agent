@@ -166,7 +166,8 @@
 
 **왜 중요한가**: 현재 클라이언트가 처리 완료를 알려면 폴링해야 한다.
 
-- [ ] SSE(Server-Sent Events) 엔드포인트: 처리 상태 스트리밍
+- [x] SSE(Server-Sent Events) 엔드포인트 — `GET /api/v1/receipts/{id}/events`
+- [x] 터미널 상태(APPROVED/NEEDS_REVIEW/FAILED) 도달 시 `done` 이벤트로 스트림 종료
 - [ ] 처리 완료 시 이메일 또는 슬랙 알림
 - [ ] 프론트엔드 실시간 상태 업데이트 (폴링 제거)
 

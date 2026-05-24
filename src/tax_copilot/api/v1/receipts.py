@@ -1,7 +1,10 @@
+import asyncio
+import json
 import uuid
 
 import structlog
 from fastapi import APIRouter, Depends, Query, UploadFile
+from fastapi.responses import StreamingResponse
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -9,6 +12,7 @@ from tax_copilot.api.deps import CurrentUser, get_current_user, get_db
 from tax_copilot.audit.events import record_event
 from tax_copilot.core.exceptions import DuplicateReceiptError, ValidationError
 from tax_copilot.core.receipts.validation import compute_file_hash, validate_receipt_file
+from tax_copilot.infra.database import AsyncSessionLocal
 from tax_copilot.infra.db.models.audit_event import ACCOUNT_CODE_UPDATED, RECEIPT_UPLOADED
 from tax_copilot.infra.db.models.receipt import STATUS_PENDING, Receipt
 from tax_copilot.infra.storage.local import save_receipt
@@ -360,3 +364,43 @@ async def batch_upload_receipts(
         error_count=errors,
         results=results,
     )
+
+
+_SSE_TERMINAL_STATUSES = {"APPROVED", "NEEDS_REVIEW", "FAILED", "REJECTED"}
+_SSE_POLL_INTERVAL = 2  # 초
+_SSE_MAX_POLLS = 60  # 최대 2분
+
+
+@router.get("/{receipt_id}/events")
+async def receipt_status_events(
+    receipt_id: int,
+    current_user: CurrentUser = Depends(get_current_user),
+) -> StreamingResponse:
+    """영수증 처리 상태를 SSE로 스트리밍한다.
+
+    처리 완료(터미널 상태) 또는 최대 2분 경과 시 스트림을 닫는다.
+    """
+
+    async def generate():  # type: ignore[return]
+        last_status = None
+        for _ in range(_SSE_MAX_POLLS):
+            async with AsyncSessionLocal() as db:
+                receipt = await db.get(Receipt, receipt_id)
+
+            if receipt is None or receipt.tenant_id != current_user.tenant_id:
+                break
+
+            if receipt.status != last_status:
+                last_status = receipt.status
+                data = json.dumps({"receipt_id": receipt_id, "status": receipt.status})
+                yield f"data: {data}\n\n"
+
+            if receipt.status in _SSE_TERMINAL_STATUSES:
+                yield "event: done\ndata: {}\n\n"
+                return
+
+            await asyncio.sleep(_SSE_POLL_INTERVAL)
+
+        yield "event: timeout\ndata: {}\n\n"
+
+    return StreamingResponse(generate(), media_type="text/event-stream")
