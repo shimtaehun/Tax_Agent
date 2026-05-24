@@ -1,0 +1,188 @@
+"""판단 초안 생성 노드.
+
+핵심 원칙:
+- 이 노드에서 LLM 판단 초안을 만들고 state에 저장한다.
+- interrupt()는 절대 이 노드에서 호출하지 않는다.
+- interrupt()는 human_review_node에서만 호출한다.
+- 이유: resume 시 이 노드가 재실행되면 LLM 비용이 이중 발생하고 결과가 달라질 수 있다.
+"""
+
+from tax_copilot.agents.state import AgentState
+from tax_copilot.core.tax.schemas import AccountCode
+
+_PROMPT_VERSION = "v0.3-rule-based"
+_MODEL_NAME = "rule-based"
+
+# 증빙 종류별 부가세 공제 가능 여부
+_VAT_CREDITABLE_BY_EVIDENCE: dict[str, bool | None] = {
+    "tax_invoice": True,
+    "credit_card_slip": True,
+    "cash_receipt": True,
+    "invoice": False,
+    "simplified_receipt": False,
+    "unknown": None,
+}
+
+# 가맹점명 키워드 → 계정과목 (우선순위 순)
+_MERCHANT_KEYWORD_MAP: list[tuple[list[str], AccountCode]] = [
+    (
+        [
+            "택시",
+            "카카오택시",
+            "우버",
+            "타다",
+            "주유",
+            "주유소",
+            "ktx",
+            "srt",
+            "버스",
+            "지하철",
+            "공항",
+        ],
+        "여비교통비",
+    ),
+    (
+        ["카페", "커피", "스타벅스", "이디야", "투썸", "약국", "의원", "병원", "클리닉"],
+        "복리후생비",
+    ),
+    (
+        ["식당", "음식점", "한식", "중식", "일식", "치킨", "피자", "분식", "고기", "삼겹", "갈비"],
+        "접대비",
+    ),
+    (["통신", "skt", "kt", "lgu", "인터넷", "핸드폰"], "통신비"),
+    (["서점", "교보문고", "영풍문고", "알라딘", "예스24", "인쇄", "출력"], "도서인쇄비"),
+    (["학원", "강의", "교육", "세미나", "훈련", "연수"], "교육훈련비"),
+    (["광고", "홍보", "마케팅", "현수막", "배너"], "광고선전비"),
+    (["임대", "임차", "월세", "주차"], "임차료"),
+    (["보험"], "보험료"),
+    (["수리", "수선", "as", "유지보수"], "수선비"),
+    (["세금", "공과", "협회비", "회비"], "세금과공과"),
+    (["용역", "프리랜서", "외주", "개발", "디자인", "번역"], "외주용역비"),
+    (
+        [
+            "편의점",
+            "gs25",
+            "cu",
+            "세븐일레븐",
+            "이마트24",
+            "마트",
+            "홈플러스",
+            "이마트",
+            "코스트코",
+            "문구",
+        ],
+        "소모품비",
+    ),  # noqa: E501
+]
+
+# 증빙 종류별 기본 계정과목 (키워드 매칭 실패 시 fallback)
+_DEFAULT_ACCOUNT_BY_EVIDENCE: dict[str, AccountCode] = {
+    "tax_invoice": "소모품비",
+    "credit_card_slip": "소모품비",
+    "cash_receipt": "소모품비",
+    "invoice": "소모품비",
+    "simplified_receipt": "소모품비",
+    "unknown": "미분류",
+}
+
+
+def _classify_account_code(
+    merchant_name: str | None,
+    evidence_type: str,
+) -> tuple[AccountCode, str | None]:
+    """가맹점명·증빙 종류 기반으로 계정과목을 분류한다."""
+    if merchant_name:
+        name_lower = merchant_name.lower()
+        for keywords, code in _MERCHANT_KEYWORD_MAP:
+            if any(kw.lower() in name_lower for kw in keywords):
+                return code, f"가맹점명 '{merchant_name}' 패턴 매칭"
+
+    default = _DEFAULT_ACCOUNT_BY_EVIDENCE.get(evidence_type, "미분류")
+    if default == "미분류":
+        return "미분류", None
+    return default, f"증빙 종류 '{evidence_type}' 기본값"
+
+
+def _should_require_human(state: AgentState) -> tuple[bool, str | None]:
+    parsed = state.get("parsed_receipt") or {}
+
+    if not state.get("relevant_laws"):
+        return True, "검색된 법령 근거가 없습니다."
+
+    confidence = parsed.get("extraction_confidence", 0.0)
+    if confidence < 0.75:
+        return True, f"추출 신뢰도가 낮습니다: {confidence:.2f}"
+
+    if state.get("calculation_result") is None and parsed.get("supply_value_krw") is not None:
+        return True, "세액 계산에 실패했습니다."
+
+    if parsed.get("evidence_type", "unknown") == "unknown":
+        return True, "증빙 종류를 판별할 수 없습니다."
+
+    return False, None
+
+
+def _build_risk_flags(parsed: dict) -> list[str]:
+    flags: list[str] = []
+    evidence_type = parsed.get("evidence_type", "unknown")
+    total = parsed.get("total_amount_krw") or 0
+
+    if evidence_type == "simplified_receipt" and total > 30000:
+        flags.append("simplified_receipt_over_30k")
+
+    if not parsed.get("transaction_date"):
+        flags.append("missing_transaction_date")
+
+    if evidence_type == "tax_invoice" and not parsed.get("merchant_business_no"):
+        flags.append("missing_business_no_on_tax_invoice")
+
+    return flags
+
+
+async def audit_prepare_node(state: AgentState) -> dict:
+    """판단 초안을 생성하고 HITL 필요 여부를 결정한다."""
+    parsed = state.get("parsed_receipt") or {}
+    calc = state.get("calculation_result")
+    laws = state.get("relevant_laws", [])
+    evidence_type = parsed.get("evidence_type", "unknown")
+    merchant_name = parsed.get("merchant_name")
+
+    requires_human, review_reason = _should_require_human(state)
+    risk_flags = _build_risk_flags(parsed)
+
+    if risk_flags and not requires_human:
+        requires_human = True
+        review_reason = f"위험 플래그 발견: {', '.join(risk_flags)}"
+
+    vat_creditable = None if requires_human else _VAT_CREDITABLE_BY_EVIDENCE.get(evidence_type)
+    account_code, account_code_reason = _classify_account_code(merchant_name, evidence_type)
+
+    draft = {
+        "vat_creditable": vat_creditable,
+        "expense_deductible": None if requires_human else True,
+        "account_code": account_code,
+        "account_code_reason": account_code_reason,
+        "evidence_type": evidence_type,
+        "evidence_status": "valid" if parsed.get("merchant_name") else "unknown",
+        "confidence": parsed.get("extraction_confidence", 0.0),
+        "risk_flags": risk_flags,
+        "citations": [
+            {
+                "chunk_id": law.get("chunk_id"),
+                "law_name": law.get("law_name"),
+                "article_no": law.get("article_no"),
+            }
+            for law in laws
+        ],
+        "requires_human_review": requires_human,
+        "review_reason": review_reason,
+        "prompt_version": _PROMPT_VERSION,
+        "model_name": _MODEL_NAME,
+        "law_corpus_version": state.get("law_corpus_version", "unknown"),
+        "calculation_result": calc,
+    }
+
+    return {
+        "draft_decision": draft,
+        "requires_human": requires_human,
+    }

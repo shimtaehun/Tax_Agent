@@ -384,6 +384,85 @@ class TestAuditPrepareNode:
         assert len(citations) == 2
         assert citations[0]["chunk_id"] == "vat-art38"
 
+    async def test_credit_card_slip_gets_account_code(self) -> None:
+        """신용카드 영수증은 account_code가 빈 문자열이 아니어야 한다."""
+        from tax_copilot.agents.nodes.audit_prepare import audit_prepare_node
+
+        state = _make_state_with_parsed(
+            evidence_type="credit_card_slip",
+            confidence=0.95,
+            relevant_laws=[
+                {"chunk_id": "vat-art38", "law_name": "부가가치세법", "article_no": "제38조"}
+            ],  # noqa: E501
+        )
+        result = await audit_prepare_node(state)
+        draft = result["draft_decision"]
+        assert "account_code" in draft
+        assert draft["account_code"] != ""
+
+    async def test_taxi_merchant_gets_여비교통비(self) -> None:
+        """택시 가맹점명은 여비교통비로 분류된다."""
+        from tax_copilot.agents.nodes.audit_prepare import audit_prepare_node
+
+        state = AgentState(
+            tenant_id=1,
+            receipt_id=1,
+            file_path="/tmp/t.jpg",  # noqa: S108
+            file_hash="abc",
+            attempt_number=1,
+            transaction_date=None,
+            law_as_of_date=None,
+            law_corpus_version="v1",
+            image_quality=None,
+            parsed_receipt={
+                "merchant_name": "카카오택시",
+                "evidence_type": "credit_card_slip",
+                "extraction_confidence": 0.95,
+                "transaction_date": "2024-06-15",
+            },
+            retrieval_query=None,
+            relevant_laws=[{"chunk_id": "c1", "law_name": "소득세법", "article_no": "제1조"}],
+            calculation_result=None,
+            draft_decision=None,
+            final_decision=None,
+            requires_human=False,
+            error_message=None,
+            messages=[],
+        )
+        result = await audit_prepare_node(state)
+        assert result["draft_decision"]["account_code"] == "여비교통비"
+
+    async def test_unknown_evidence_gets_미분류(self) -> None:
+        """증빙 종류 불명확 → 미분류."""
+        from tax_copilot.agents.nodes.audit_prepare import audit_prepare_node
+
+        state = AgentState(
+            tenant_id=1,
+            receipt_id=1,
+            file_path="/tmp/t.jpg",  # noqa: S108
+            file_hash="abc",
+            attempt_number=1,
+            transaction_date=None,
+            law_as_of_date=None,
+            law_corpus_version="v1",
+            image_quality=None,
+            parsed_receipt={
+                "merchant_name": "알수없는가맹점",
+                "evidence_type": "unknown",
+                "extraction_confidence": 0.5,
+            },
+            retrieval_query=None,
+            relevant_laws=[],
+            calculation_result=None,
+            draft_decision=None,
+            final_decision=None,
+            requires_human=False,
+            error_message=None,
+            messages=[],
+        )
+        result = await audit_prepare_node(state)
+        assert result["draft_decision"]["account_code"] == "미분류"
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # TaxDecision AccountCode 테스트
