@@ -8,48 +8,50 @@ import structlog
 request_id_var: ContextVar[str] = ContextVar("request_id", default="-")
 
 _PII_PATTERNS = [
-    (re.compile(r"\b\d{3}-\d{2}-\d{5}\b"), "***-**-*****"),  # 사업자등록번호
-    (re.compile(r"\b\d{4}-\d{4}-\d{4}-\d{4}\b"), "****-****-****-****"),  # 카드번호
+    (re.compile(r"\b\d{3}-\d{2}-\d{5}\b"), "***-**-*****"),
+    (re.compile(r"\b\d{4}-\d{4}-\d{4}-\d{4}\b"), "****-****-****-****"),
 ]
 
 
-def _mask_pii(event: str) -> str:
+def _mask_text(value: str) -> str:
     for pattern, replacement in _PII_PATTERNS:
-        event = pattern.sub(replacement, event)
-    return event
+        value = pattern.sub(replacement, value)
+    return value
 
 
 def _add_request_id(
     logger: logging.Logger,
-    method: str,
+    method_name: str,
     event_dict: structlog.types.EventDict,
 ) -> structlog.types.EventDict:
     event_dict["request_id"] = request_id_var.get()
     return event_dict
 
 
-def _mask_pii_processor(
+def _mask_pii(
     logger: logging.Logger,
-    method: str,
+    method_name: str,
     event_dict: structlog.types.EventDict,
 ) -> structlog.types.EventDict:
-    if "event" in event_dict and isinstance(event_dict["event"], str):
-        event_dict["event"] = _mask_pii(event_dict["event"])
+    if isinstance(event_dict.get("event"), str):
+        event_dict["event"] = _mask_text(event_dict["event"])
     return event_dict
 
 
 def configure_logging(json_logs: bool = True) -> None:
+    """Configure structlog with request IDs and basic PII masking."""
     shared_processors: list[structlog.types.Processor] = [
         structlog.contextvars.merge_contextvars,
         _add_request_id,
-        _mask_pii_processor,
+        _mask_pii,
         structlog.stdlib.add_log_level,
         structlog.stdlib.add_logger_name,
         structlog.processors.TimeStamper(fmt="iso"),
     ]
 
+    renderer: structlog.types.Processor
     if json_logs:
-        renderer: structlog.types.Processor = structlog.processors.JSONRenderer()
+        renderer = structlog.processors.JSONRenderer()
     else:
         renderer = structlog.dev.ConsoleRenderer()
 

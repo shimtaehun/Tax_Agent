@@ -1,14 +1,16 @@
 import uuid
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Awaitable, Callable
 from contextlib import asynccontextmanager
 
 import structlog
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse, Response
 
+from tax_copilot import __version__
+from tax_copilot.agents.graph import build_graph
 from tax_copilot.api.errors import register_exception_handlers
-from tax_copilot.api.v1.auth import router as auth_router
-from tax_copilot.api.v1.receipts import router as receipts_router
+from tax_copilot.api.v1 import v1_router
 from tax_copilot.core.config import settings
 from tax_copilot.core.logging import configure_logging, request_id_var
 
@@ -17,31 +19,52 @@ logger = structlog.get_logger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+    """Configure process-wide services for the API lifecycle."""
     configure_logging(json_logs=not settings.debug)
-    logger.info("startup", version="0.1.0")
-    yield
-    logger.info("shutdown")
+
+    # PostgreSQL Checkpointer: graph 실행 상태를 DB에 저장, HITL resume 지원
+    from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+
+    async with AsyncPostgresSaver.from_conn_string(settings.checkpointer_url) as checkpointer:
+        await checkpointer.setup()  # checkpoint 테이블 초기화 (멱등)
+        app.state.graph = build_graph(checkpointer=checkpointer)
+        logger.info("startup", version=__version__)
+        yield
+        logger.info("shutdown")
 
 
 app = FastAPI(
     title="Tax-Copilot",
-    version="0.1.0",
+    version=__version__,
     lifespan=lifespan,
 )
 
-register_exception_handlers(app)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:3000",
+        "http://localhost:3001",
+        settings.frontend_url,
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-app.include_router(auth_router, prefix="/v1")
-app.include_router(receipts_router, prefix="/v1")
+register_exception_handlers(app)
+app.include_router(v1_router)
 
 
 @app.middleware("http")
-async def request_id_middleware(request: Request, call_next: object) -> object:
-    rid = request.headers.get("X-Request-ID", str(uuid.uuid4()))
-    token = request_id_var.set(rid)
+async def request_id_middleware(
+    request: Request,
+    call_next: Callable[[Request], Awaitable[Response]],
+) -> Response:
+    request_id = request.headers.get("X-Request-ID", str(uuid.uuid4()))
+    token = request_id_var.set(request_id)
     try:
-        response = await call_next(request)  # type: ignore[operator]
-        response.headers["X-Request-ID"] = rid
+        response = await call_next(request)
+        response.headers["X-Request-ID"] = request_id
         return response
     finally:
         request_id_var.reset(token)

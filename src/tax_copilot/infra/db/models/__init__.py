@@ -1,6 +1,16 @@
-from .base import Base
-from .receipt import AuditEvent, Receipt, TaxJudgment
-from .tenant import Tenant
-from .user import User
+from tax_copilot.infra.db.models.audit_event import AuditEvent
+from tax_copilot.infra.db.models.base import Base, TimestampMixin
+from tax_copilot.infra.db.models.client_company import ClientCompany
+from tax_copilot.infra.db.models.receipt import Receipt
+from tax_copilot.infra.db.models.tenant import Tenant
+from tax_copilot.infra.db.models.user import User
 
-__all__ = ["Base", "Tenant", "User", "Receipt", "TaxJudgment", "AuditEvent"]
+__all__ = [
+    "Base",
+    "TimestampMixin",
+    "Tenant",
+    "ClientCompany",
+    "User",
+    "Receipt",
+    "AuditEvent",
+]
