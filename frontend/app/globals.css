@@ -190,6 +190,124 @@ dd {
   color: var(--ink);
 }
 
+.reviewList {
+  display: grid;
+  gap: 4px;
+}
+
+.listItem {
+  background: transparent;
+  border-radius: 6px;
+  color: #94a3b8;
+  cursor: pointer;
+  display: grid;
+  font-size: 13px;
+  font-weight: 400;
+  gap: 2px;
+  padding: 8px 10px;
+  text-align: left;
+  width: 100%;
+}
+
+.listItem:hover {
+  background: #1e293b;
+  color: white;
+}
+
+.listItemActive {
+  background: #24344f !important;
+  color: white !important;
+}
+
+.listName {
+  font-size: 11px;
+  color: #64748b;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.listItemActive .listName {
+  color: #94a3b8;
+}
+
+/* 로그인 페이지 */
+.loginWrap {
+  align-items: center;
+  background: var(--bg);
+  display: flex;
+  justify-content: center;
+  min-height: 100vh;
+}
+
+.loginCard {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 40px;
+  width: 100%;
+  max-width: 380px;
+}
+
+.loginCard .brand {
+  color: var(--ink);
+  font-size: 22px;
+  font-weight: 800;
+  margin-bottom: 4px;
+}
+
+.loginSub {
+  color: var(--muted);
+  font-size: 14px;
+  margin-bottom: 28px !important;
+}
+
+.loginCard form {
+  display: grid;
+  gap: 16px;
+}
+
+.loginCard label {
+  color: var(--muted);
+  display: grid;
+  font-size: 13px;
+  font-weight: 700;
+  gap: 6px;
+}
+
+.loginCard input {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font-size: 14px;
+  padding: 10px 12px;
+  width: 100%;
+  outline: none;
+}
+
+.loginCard input:focus {
+  border-color: var(--primary);
+}
+
+.loginBtn {
+  margin-top: 4px;
+  width: 100%;
+}
+
+.errMsg {
+  background: #fee2e2;
+  border-radius: 6px;
+  color: #991b1b;
+  font-size: 13px;
+  padding: 10px 12px;
+}
+
+.loginHint {
+  color: var(--muted);
+  font-size: 12px;
+  margin-top: 20px !important;
+  text-align: center;
+}
+
 @media (max-width: 820px) {
   .shell,
   .reviewPanel,

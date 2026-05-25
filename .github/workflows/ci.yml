@@ -45,7 +45,7 @@ jobs:
           cache: pip
           cache-dependency-path: requirements/dev.in
 
-      - name: Install pip-tools and dependencies
+      - name: Install dependencies
         run: |
           pip install pip-tools
           pip-compile requirements/base.in -o requirements/base.txt -q
@@ -53,16 +53,16 @@ jobs:
           pip install -r requirements/dev.txt
           pip install -e .
 
-      - name: Lint (ruff)
+      - name: Lint
         run: |
-          ruff check src/
-          ruff format --check src/
+          ruff check src tests
+          ruff format --check src tests
 
-      - name: Type check (mypy)
-        run: mypy src/tax_copilot/core/
+      - name: Type check
+        run: mypy src/tax_copilot/core
 
       - name: Test
         env:
           DATABASE_URL: postgresql+asyncpg://tax:tax@localhost:5432/tax_copilot  # pragma: allowlist secret
           REDIS_URL: redis://localhost:6379/0
-        run: pytest tests/ -v --tb=short
+        run: pytest -v --tb=short

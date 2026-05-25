@@ -15,3 +15,20 @@ services:
         sync: false
       - key: QDRANT_URL
         sync: false
+      - key: FRONTEND_URL
+        sync: false
+
+  - type: worker
+    name: tax-copilot-celery
+    env: docker
+    dockerCommand: celery -A tax_copilot.workers.celery_app worker --loglevel=info --concurrency=2
+    plan: free
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: QDRANT_URL
+        sync: false
