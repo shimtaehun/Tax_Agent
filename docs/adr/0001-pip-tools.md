@@ -1,22 +1,30 @@
-# ADR 0001 — pip-tools로 의존성 관리
+# ADR 0001 — pip + pip-tools for dependency management
 
-Date: 2026-05-17
+Date: 2026-05-24
 Status: Accepted
 
 ## Context
 
-Python 의존성 관리 도구로 pip freeze, Poetry, uv, pip-tools 중 선택해야 한다.
-포트폴리오 프로젝트이므로 현업 표준에 가까운 도구를 선택하되 학습 비용이 낮아야 한다.
+Python 패키지 관리 도구로 pip-tools, uv, Poetry 중 선택이 필요했다.
+배포 대상은 Railway 또는 Render이며, 1인 개발 포트폴리오 프로젝트다.
 
 ## Decision
 
-pip + pip-tools 조합을 사용한다.
-- `requirements/*.in` — 직접 선언한 의존성 (git 추적)
-- `requirements/*.txt` — pip-compile이 생성한 전체 트리 (gitignore)
-- 환경 분리: base.in (공통) / dev.in (개발)
+pip + pip-tools를 사용한다.
+
+- `requirements/base.in`: 직접 선언한 의존성
+- `requirements/dev.in`: 개발 도구 (base.in 포함)
+- `pip-compile`로 `.txt` lock 파일 생성
 
 ## Consequences
 
-- Poetry/uv 대비 lock 파일이 없으나, .txt 파일이 동일 역할 수행
-- 패키지 업그레이드 시 `pip-compile --upgrade` 한 번으로 전체 갱신 가능
-- 상세는 git history 참조
+**Good:**
+- `requirements.txt` 기반 배포 → Railway/Render 빌더 추가 설정 불필요
+- `.in` 파일에서 상위 버전 범위 지정, `.txt`에서 hash pinning → 재현성 보장
+- Poetry/uv 대비 onboarding 부담 없음
+
+**Bad:**
+- uv에 비해 속도가 느림
+- lock 파일 충돌 시 수동 해결 필요
+
+필요 시 uv로 마이그레이션 가능한 구조 유지.

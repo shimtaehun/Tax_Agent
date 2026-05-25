@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="620" viewBox="0 0 1100 620" role="img" aria-label="Tax-Copilot architecture dark">
+  <rect width="1100" height="620" fill="#111827"/>
+  <style>
+    text{font-family:Arial,sans-serif;fill:#f9fafb}.box{fill:#1f2937;stroke:#cbd5e1;stroke-width:2;rx:8}.ext{fill:#172554}.core{fill:#064e3b}.infra{fill:#431407}.arrow{stroke:#cbd5e1;stroke-width:2;fill:none;marker-end:url(#a)}
+  </style>
+  <defs><marker id="a" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#cbd5e1"/></marker></defs>
+  <text x="40" y="48" font-size="28" font-weight="700">Tax-Copilot Architecture</text>
+  <rect class="box ext" x="40" y="90" width="180" height="80"/><text x="75" y="125" font-size="16">Next.js UI</text><text x="72" y="148" font-size="13">upload / review</text>
+  <rect class="box" x="290" y="90" width="190" height="80"/><text x="330" y="125" font-size="16">FastAPI</text><text x="320" y="148" font-size="13">auth / receipts</text>
+  <rect class="box infra" x="560" y="90" width="190" height="80"/><text x="595" y="125" font-size="16">PostgreSQL</text><text x="588" y="148" font-size="13">app data / audit</text>
+  <rect class="box infra" x="830" y="90" width="190" height="80"/><text x="884" y="125" font-size="16">Redis</text><text x="865" y="148" font-size="13">broker / locks</text>
+  <rect class="box core" x="290" y="250" width="190" height="90"/><text x="325" y="286" font-size="16">LangGraph</text><text x="317" y="310" font-size="13">HITL workflow</text>
+  <rect class="box core" x="40" y="250" width="180" height="90"/><text x="67" y="286" font-size="16">Vision Boundary</text><text x="62" y="310" font-size="13">quality + extract</text>
+  <rect class="box core" x="560" y="250" width="190" height="90"/><text x="605" y="286" font-size="16">Core RAG</text><text x="585" y="310" font-size="13">as_of_date search</text>
+  <rect class="box infra" x="830" y="250" width="190" height="90"/><text x="885" y="286" font-size="16">Qdrant</text><text x="858" y="310" font-size="13">law vectors</text>
+  <rect class="box core" x="290" y="420" width="190" height="90"/><text x="328" y="456" font-size="16">Calculation</text><text x="316" y="480" font-size="13">Decimal VAT tool</text>
+  <rect class="box infra" x="560" y="420" width="190" height="90"/><text x="606" y="456" font-size="16">Celery</text><text x="592" y="480" font-size="13">receipt worker</text>
+  <path class="arrow" d="M220 130 H290"/><path class="arrow" d="M480 130 H560"/><path class="arrow" d="M480 130 C620 190 700 210 830 130"/><path class="arrow" d="M385 170 V250"/><path class="arrow" d="M220 295 H290"/><path class="arrow" d="M480 295 H560"/><path class="arrow" d="M750 295 H830"/><path class="arrow" d="M385 340 V420"/><path class="arrow" d="M480 465 H560"/>
+</svg>

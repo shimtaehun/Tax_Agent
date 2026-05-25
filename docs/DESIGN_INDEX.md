@@ -2,9 +2,9 @@
 
 전체 설계 문서의 압축 요약본. 새 대화를 시작할 때 이 파일만 먼저 로드하고, 상세 작업 시 해당 모듈만 추가 로드한다.
 
-Version: 5.0 (분할판)
+Version: 5.1 (분할판)
 Author: 심태훈 / Tax-Copilot Portfolio Project
-일정: 2026-05-16 ~ 2026-06-20 (5주, 약 150h)
+일정: 2026-05-24 ~ 2026-06-27 (5주, 약 150h)
 
 ---
 
@@ -48,7 +48,7 @@ Author: 심태훈 / Tax-Copilot Portfolio Project
 | 프론트엔드 | Next.js App Router (Week 5에만 작업) |
 | 코드 품질 | ruff (E,F,I,B,UP,S, line 100) + mypy (core strict) + pre-commit |
 | 배포 | Railway 1순위 / Render 2순위, Dockerfile 기반 |
-| 스토리지 | Cloudflare R2 또는 로컬 (abstraction layer) |
+| 스토리지 | 로컬 우선, 이후 Cloudflare R2 adapter 교체 |
 
 → 상세: `DESIGN_CORE.md` 5~6장
 
@@ -69,12 +69,14 @@ Author: 심태훈 / Tax-Copilot Portfolio Project
 ## 5. LangGraph 그래프
 
 ```
-[START] → image_quality → (unreadable: reject) 
-        → intake → build_retrieval_query → tax_law_retrieval 
-        → calculation → audit_prepare 
-        → (requires_human: human_review[interrupt] → save_result) 
-        → (auto: save_result) → [END]
+[START] → image_quality → (unreadable: reject)
+        → intake → build_retrieval_query → tax_law_retrieval
+        → calculation → audit_prepare
+        → (requires_human: human_review[interrupt] → save_result)
+        → (low_risk_candidate: save_result) → [END]
 ```
+
+`low_risk_candidate`는 자동 확정이 아니라 판단 후보 저장 경로다. 사용자에게는 "판단 후보 작성 완료" 또는 "검토 가능" 상태로 표시한다.
 
 resume는 `Command(resume={"approved": True, "comment": ...})` + `config={"configurable": {"thread_id": ...}}`.
 
@@ -112,10 +114,10 @@ resume는 `Command(resume={"approved": True, "comment": ...})` + `config={"confi
 
 | 주차 | Phase | 산출물 |
 | --- | --- | --- |
-| W1 | Phase 0 + 1 전반 | repo skeleton, Docker Compose, Alembic, User/Tenant, JWT |
-| W2 | Phase 1 후반 + 2 | Receipt upload, R2 abstraction, LangGraph state, HITL |
-| W3 | Phase 3 | law corpus, Gemini embedding, Qdrant, 거래일 검색 |
-| W4 | Phase 4 + 5 | Gemini Vision, Celery, Redis lock |
+| W1 | Phase 0 + 1 전반 | repo skeleton, Docker Compose, Alembic, seed admin/default client, local upload |
+| W2 | Phase 1 후반 + 2 | Receipt upload, mock Vision/RAG, LangGraph state, HITL, audit log |
+| W3 | Phase 3 | sample law corpus, Gemini embedding, 거래일 검색, Qdrant adapter |
+| W4 | Phase 4 + 5 | Gemini Vision, Celery, Redis lock, idempotency |
 | W5 | Phase 6 | Next.js UI, Railway 배포, README, demo |
 
 가용: 평일 2h × 5 + 주말 10h × 2 = 30h/주. 매주 일요일 점검·조정.
@@ -164,3 +166,4 @@ Semantic Cache, 자동 법령 업데이트 GHA, RAGAS 정량 평가, KPI 대시�
 - 설계 결정 변경 시: 해당 모듈에 반영 + `docs/adr/NNNN-*.md` 작성 + 본 INDEX의 관련 줄 업데이트.
 - 섹션 확정 완료 시: 본문을 3~5줄 요약으로 축약하고 "상세는 git history 참조" 명시.
 - v5.0 변경: 법적 포지셔닝 / 확정 기술 결정 / 폴더 구조 / 관측 / 배포 확장 / 5주 일정 / 시연 자료 신설. `evidence_type` 추가. CLAUDE.md 분리.
+- v5.1 변경: 2026-05-24 기준 일정 재산정. mock 기반 수직 슬라이스 우선, local storage first, 자동 승인 표현 제거, Qdrant/R2/Celery는 수직 슬라이스 이후 연동으로 조정.

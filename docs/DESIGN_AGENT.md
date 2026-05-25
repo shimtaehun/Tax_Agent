@@ -4,7 +4,7 @@
 LangGraph 에이전트 그래프, HITL interrupt/resume, RAG 파이프라인, 법령 수집/버전 관리, 영수증 Vision 처리, Celery 비동기 워커를 다룹니다.
 프로젝트 전체 맥락은 DESIGN_CORE.md, 도메인 모델(9장)은 DESIGN_CORE.md 참조.
 
-Version: 5.0 (분할판)
+Version: 5.1 (분할판)
 
 ---
 
@@ -70,8 +70,10 @@ class AgentState(TypedDict):
    |
    +-- requires_human --> [human_review_node interrupt] --> [save_result] --> [END]
    |
-   +-- auto_decidable --> [save_result] --> [END]
+   +-- low_risk_candidate --> [save_result] --> [END]
 ```
+
+`low_risk_candidate`는 자동 확정이 아니다. HITL interrupt 없이 판단 후보를 저장할 수 있다는 뜻이며, UI와 API에서는 "판단 후보 작성 완료" 또는 "검토 가능" 상태로 표현한다.
 
 ### 중요한 수정점
 

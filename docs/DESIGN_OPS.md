@@ -4,7 +4,7 @@
 DB 스키마, 인증/보안/감사 로그, 관측 가능성 (structlog, PII 마스킹, 도메인 예외), Graceful Degradation, 테스트 전략, 배포·비용·환경 분리를 다룹니다.
 도메인 모델은 DESIGN_CORE.md 9장, 에이전트 동작 흐름은 DESIGN_AGENT.md 참조.
 
-Version: 5.0 (분할판)
+Version: 5.1 (분할판)
 
 ---
 
@@ -35,6 +35,26 @@ class Tenant(Base):
     created_at: Mapped[datetime] = mapped_column(default=func.now())
 ```
 
+### ClientCompany
+
+```python
+class ClientCompany(Base):
+    __tablename__ = "client_companies"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(ForeignKey("tenants.id"), index=True)
+    name: Mapped[str] = mapped_column(String(255))
+    business_no: Mapped[str | None] = mapped_column(String(20), nullable=True)  # 마스킹 대상
+    is_active: Mapped[bool] = mapped_column(default=True)
+    created_at: Mapped[datetime] = mapped_column(default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "business_no", name="uq_client_companies_tenant_bno"),
+    )
+```
+
+MVP에서는 tenant별 default client company를 seed해 고객사 선택 UI 없이 업로드 흐름을 먼저 완성한다.
+
 ### User
 
 ```python
@@ -61,6 +81,7 @@ class Receipt(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     tenant_id: Mapped[int] = mapped_column(ForeignKey("tenants.id"), index=True)
+    client_company_id: Mapped[int] = mapped_column(ForeignKey("client_companies.id"), index=True)
     uploaded_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
 
     file_path: Mapped[str] = mapped_column(String(500))
@@ -325,7 +346,7 @@ MVP:
 ### Integration Test
 
 - upload to task dispatch
-- LangGraph 자동 승인 흐름
+- LangGraph low-risk candidate save flow
 - LangGraph HITL interrupt and resume
 - Qdrant search with as_of_date
 - Celery retry and idempotency

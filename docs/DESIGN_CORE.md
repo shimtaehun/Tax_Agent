@@ -4,7 +4,7 @@
 이 파일만 단독으로 로드해도 프로젝트의 정체성, MVP 범위, 기술 결정, 아키텍처, 도메인 모델까지 파악 가능합니다.
 LangGraph 에이전트, RAG, DB, 배포 등 상세는 별도 파일을 참조하세요.
 
-Version: 5.0 (분할판)
+Version: 5.1 (분할판)
 Author: 심태훈 / Tax-Copilot Portfolio Project
 
 ---
@@ -13,7 +13,7 @@ Author: 심태훈 / Tax-Copilot Portfolio Project
 
 세무사를 위한 AI 기반 업무 자동화 워크플로우 엔진
 
-Version: 5.0
+Version: 5.1
 Last Updated: 2026-05-15
 Author: 심태훈 / Tax-Copilot Portfolio Project
 Repository: tax-copilot
@@ -193,7 +193,7 @@ HITL 이관 기준:
 - 사용자는 세무사 또는 세무법인 소속 직원으로 한정
 - AI 출력은 "판단 후보"와 "법령 근거"이며, 확정 결론이 아니다
 - 모든 최종 판단은 세무사 검토 또는 HITL 승인을 거친다
-- AI가 자동 승인하는 경우도 "세무사가 위임한 판단 기준에 따른 사전 승인"으로 해석한다
+- HITL 없이 흐름을 마치는 경우도 "자동 승인"이 아니라 "판단 후보 작성 완료"로 표시한다. MVP에서 최종 확정은 세무사 또는 관리자 검토 상태로만 표현한다.
 
 ### 면책 명시 위치
 
@@ -219,22 +219,32 @@ HITL 이관 기준:
 
 ### MVP에서 반드시 구현할 것
 
-MVP는 작게 만들되 핵심 구조를 끝까지 연결한다.
+MVP는 작게 만들되 핵심 구조를 끝까지 연결한다. 우선순위는 "외부 서비스 연동"보다 "업로드부터 사람 검토까지 끊기지 않는 수직 슬라이스"다.
 
-- 사용자 로그인과 admin 역할 분리
+- seed admin/default client 또는 단순 JWT 기반 로그인과 admin 역할 분리
 - 영수증 업로드 API
-- 파일 검증과 스토리지 저장
-- Receipt DB 모델
-- Celery 작업 dispatch
+- magic bytes 기반 파일 검증과 로컬 스토리지 저장
+- Receipt, TaxJudgment, AuditEvent DB 모델
 - LangGraph 기본 흐름
-- mocked 또는 실제 Gemini Vision 기반 영수증 필드 추출
-- 법령 chunk 20개 내외의 작은 RAG corpus
-- Qdrant 검색 또는 local in-memory vector store로 시작 후 Qdrant 교체
+- mocked Vision 기반 영수증 필드 추출
+- mocked 또는 in-memory RAG 기반 법령 후보 반환
 - 거래일 기준 법령 필터
-- 판단 결과 저장
-- HITL 승인/반려 API
-- 감사 로그 저장
-- 최소 단위 테스트와 통합 테스트
+- 결정론적 계산 함수와 판단 후보 저장
+- HITL 검토/승인/반려 API
+- 모든 상태 전이에 대한 감사 로그 저장
+- 전체 흐름 통합 테스트
+
+### MVP 이후 바로 붙일 것
+
+수직 슬라이스가 테스트에서 통과한 뒤 다음 외부 연동을 붙인다.
+
+- Gemini Vision structured extraction
+- 법령 chunk 20개 내외의 시연용 sample corpus
+- Qdrant 검색 어댑터
+- Celery 작업 dispatch와 Redis lock
+- Cloudflare R2 스토리지 어댑터
+
+sample corpus는 구조 시연용이며, 세무 판단 정확도를 주장하는 근거로 쓰지 않는다.
 
 ### MVP에서 의도적으로 미룰 것
 
@@ -368,7 +378,8 @@ MVP에서는 5초 polling으로 충분하다. Next.js Route Handler는 HTTP meth
 
 | 기술 | 역할 | 비고 |
 | --- | --- | --- |
-| Cloudflare R2 | 영수증 파일 저장 | S3-compatible |
+| Local storage | MVP 영수증 파일 저장 | 먼저 구현해서 업로드 흐름을 고정 |
+| Cloudflare R2 | 배포용 영수증 파일 저장 | S3-compatible adapter로 교체 |
 
 R2 free tier는 Standard storage 기준 10GB-month, Class A 1M requests/month, Class B 10M requests/month를 제공한다. 무료 조건은 바뀔 수 있으므로 README에는 실측 비용과 기준일을 함께 적는다.
 
@@ -395,9 +406,10 @@ R2 free tier는 Standard storage 기준 10GB-month, Class A 1M requests/month, C
         |
         v
 
-[Storage: R2]
+[Storage: Local -> R2 adapter]
   - private receipt files
-  - presigned access only
+  - local path in MVP
+  - presigned access only after R2 integration
 
 [PostgreSQL]
   - users

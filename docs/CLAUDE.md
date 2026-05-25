@@ -6,7 +6,7 @@ Tax-Copilot 프로젝트의 AI 페어 프로그래밍 협업 규칙. 이 파일�
 
 - 프로젝트명: Tax-Copilot
 - 목적: 세무사를 위한 AI 기반 업무 보조 도구 (포트폴리오)
-- 기간: 2026-05-16 ~ 2026-06-20 (5주)
+- 기간: 2026-05-24 ~ 2026-06-27 (5주)
 - 배포 목표: Render 또는 Railway
 - 본 프로젝트는 학습 중심으로 진행한다. 완성보다 이해를 우선한다.
 
@@ -14,11 +14,11 @@ Tax-Copilot 프로젝트의 AI 페어 프로그래밍 협업 규칙. 이 파일�
 
 마스터 설계 문서는 토큰 비용 통제를 위해 5개 모듈로 분할되어 있다. 전체를 한꺼번에 읽지 않는다.
 
-- `docs/design/DESIGN_INDEX.md` — 압축 요약본 + 모듈 라우팅 표. 새 세션 동기화 시 **이것부터** 읽는다.
-- `docs/design/DESIGN_CORE.md` — 개요, 원칙, 법적 포지셔닝, MVP, 기술 결정, 스택, 아키텍처, 폴더 구조, 도메인 모델 (1~9장)
-- `docs/design/DESIGN_AGENT.md` — LangGraph, HITL, RAG, 법령 수집, Vision, Celery (10~15장)
-- `docs/design/DESIGN_OPS.md` — DB, 인증, 관측, Graceful Degradation, 테스트, 배포 (16~21장)
-- `docs/design/DESIGN_PLAN.md` — 로드맵, 5주 일정, 백로그, 함정, 시연 자료, README, 부록 (22~29장)
+- `docs/DESIGN_INDEX.md` — 압축 요약본 + 모듈 라우팅 표. 새 세션 동기화 시 **이것부터** 읽는다.
+- `docs/DESIGN_CORE.md` — 개요, 원칙, 법적 포지셔닝, MVP, 기술 결정, 스택, 아키텍처, 폴더 구조, 도메인 모델 (1~9장)
+- `docs/DESIGN_AGENT.md` — LangGraph, HITL, RAG, 법령 수집, Vision, Celery (10~15장)
+- `docs/DESIGN_OPS.md` — DB, 인증, 관측, Graceful Degradation, 테스트, 배포 (16~21장)
+- `docs/DESIGN_PLAN.md` — 로드맵, 5주 일정, 백로그, 함정, 시연 자료, README, 부록 (22~29장)
 
 작업 종류별로 어떤 파일을 추가로 열지는 INDEX의 **모듈 라우팅 표**를 따른다.
 
@@ -214,7 +214,7 @@ Claude는 다음 상황에서는 코드를 쓰지 않는다.
 세션 시작 시 사용자가 보낼 첫 메시지 예시:
 
 ```text
-CLAUDE.md와 docs/design/DESIGN_INDEX.md를 참조하고, 현재 Phase 0 Step 0.3
+CLAUDE.md와 docs/DESIGN_INDEX.md를 참조하고, 현재 Phase 0 Step 0.3
 (pyproject.toml + ruff + mypy + pre-commit) 시작 단계입니다. 이전 step까지의
 결과물은 main 브랜치에 머지되어 있습니다.
 

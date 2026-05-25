@@ -1,16 +1,18 @@
 # Tax-Copilot Design — PLAN (22~29장)
 
 본 문서는 전체 설계 문서를 4개 모듈 + 1개 인덱스로 분할한 것 중 **PLAN 모듈**입니다.
-5주 개발 로드맵 (Phase 0~4), 후순위 백로그, 제거/축소 결정, 알려진 함정, 포트폴리오 시연 자료, README 템플릿, 공식 문서 링크 부록을 다룹니다.
+5주 개발 로드맵 (Phase 0~6), 후순위 백로그, 제거/축소 결정, 알려진 함정, 포트폴리오 시연 자료, README 템플릿, 공식 문서 링크 부록을 다룹니다.
 구현 상세는 CORE/AGENT/OPS 참조.
 
-Version: 5.0 (분할판)
+Version: 5.1 (분할판)
 
 ---
 
 ## 22. 개발 로드맵
 
 각 Phase는 학습 목표, 핵심 키워드, 산출물을 포함한다.
+
+진행 원칙: 외부 AI, Qdrant, R2, Celery를 한 번에 붙이지 않는다. 먼저 mock 기반으로 영수증 업로드 → 판단 후보 생성 → HITL 검토 → 감사 로그 저장까지 수직 슬라이스를 완성하고, 그 뒤 외부 연동을 하나씩 교체한다.
 
 ### Phase 0. Repository and Skeleton
 
@@ -38,14 +40,15 @@ Version: 5.0 (분할판)
 
 학습 목표: 멀티테넌시 인증과 파일 업로드의 안전한 구현을 익힌다.
 
-핵심 키워드: JWT, tenant scope, magic bytes, presigned URL, audit event
+핵심 키워드: JWT, tenant scope, magic bytes, storage abstraction, audit event
 
 작업:
 
 - tenant/user/receipt models
 - JWT auth
 - file upload validation
-- local storage or R2 abstraction
+- local storage first
+- R2 abstraction only after local upload is stable
 - audit events
 - admin pending API
 
@@ -95,9 +98,10 @@ Version: 5.0 (분할판)
 
 산출물:
 
-- 20개 내외 법령 chunk가 Qdrant에 저장됨
+- 20개 내외 법령 chunk가 sample corpus에 저장됨
 - as_of_date를 바꾸면 다른 결과가 나오는 검색 확인
 - LangGraph에서 RAG 노드가 실제 chunk 반환
+- Qdrant adapter는 in-memory 검색 계약이 고정된 뒤 교체
 
 ### Phase 4. Vision Integration
 
@@ -157,18 +161,18 @@ Version: 5.0 (분할판)
 
 ### 23.1. 5주 마일스톤
 
-기간: 2026-05-16 (토) ~ 2026-06-20 (토)
+기간: 2026-05-24 (일) ~ 2026-06-27 (토)
 가용 시간: 평일 2h × 5 + 주말 10h × 2 = 주 30h, 총 150h
 
 | 주차 | Phase | 주요 산출물 |
 | --- | --- | --- |
-| Week 1 | Phase 0 + Phase 1 전반 | repo skeleton, Docker Compose, Alembic, User/Tenant, JWT |
-| Week 2 | Phase 1 후반 + Phase 2 | Receipt upload, R2, LangGraph state, HITL |
-| Week 3 | Phase 3 | law corpus, Gemini embedding, Qdrant, 거래일 검색 |
-| Week 4 | Phase 4 + Phase 5 | Gemini Vision, Celery, Redis lock |
+| Week 1 | Phase 0 + Phase 1 전반 | repo skeleton, Docker Compose, Alembic, seed admin/default client, local upload |
+| Week 2 | Phase 1 후반 + Phase 2 | Receipt upload, mock Vision/RAG, LangGraph state, HITL, audit log |
+| Week 3 | Phase 3 | sample law corpus, Gemini embedding, 거래일 검색, Qdrant adapter |
+| Week 4 | Phase 4 + Phase 5 | Gemini Vision, Celery, Redis lock, idempotency |
 | Week 5 | Phase 6 + 배포 | Next.js, Railway 배포, README, demo |
 
-이 일정은 "마감 가능한 페이스"이며, 학습 페이스 우선이 원칙이다. 매주 일요일에 점검하고 일정 조정한다.
+이 일정은 2026-05-24 재기획 기준의 목표 페이스다. 매주 일요일에 실제 진척을 보고 R2, Qdrant, Celery, UI 범위를 줄일지 결정한다.
 
 ### 23.2. Phase 0 step 분해 (Week 1, 약 18h)
 
