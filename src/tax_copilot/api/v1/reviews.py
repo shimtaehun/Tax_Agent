@@ -3,11 +3,10 @@
 세무사가 AI 판단 초안을 승인하거나 반려한다.
 """
 
-from datetime import UTC, datetime
+from datetime import datetime
 
 import structlog
-from fastapi import APIRouter, Depends, Request
-from langgraph.types import Command
+from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -95,7 +94,6 @@ async def list_review_history(
 async def decide_review(
     receipt_id: int,
     body: ReviewDecision,
-    request: Request,
     current_user: CurrentUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> ReviewResult:
@@ -113,30 +111,18 @@ async def decide_review(
     if receipt is None:
         raise ValidationError(f"검토 대기 중인 영수증 {receipt_id}를 찾을 수 없습니다.")
 
-    thread_id = receipt.langgraph_thread_id
-    if not thread_id:
-        raise ValidationError("LangGraph thread_id가 없습니다.")
-
-    graph = request.app.state.graph
-    config = {"configurable": {"thread_id": thread_id}}
-
-    try:
-        await graph.ainvoke(
-            Command(resume={"approved": body.approved, "comment": body.comment}),
-            config=config,
-        )
-    except Exception:
-        logger.exception("graph.ainvoke_failed", receipt_id=receipt_id, thread_id=thread_id)
-        raise ValidationError(  # noqa: E501 (Korean message)
-            "워크플로우 재개에 실패했습니다. 잠시 후 다시 시도해주세요."
-        ) from None
-
     new_status = STATUS_APPROVED if body.approved else STATUS_REJECTED
+    final_decision = dict(receipt.parsed_data or {})
+    final_decision["human_approved"] = body.approved
+    final_decision["human_comment"] = body.comment
+    final_decision["requires_human_review"] = False
+    receipt.parsed_data = final_decision
+    if final_decision.get("account_code") is not None:
+        receipt.account_code = final_decision.get("account_code")
     receipt.status = new_status
     receipt.reviewed_by = current_user.user_id
-    receipt.reviewed_at = datetime.now(UTC)
+    receipt.reviewed_at = datetime.utcnow()
     receipt.review_comment = body.comment
-    receipt.updated_at = datetime.now(UTC)
 
     event_type = HUMAN_REVIEW_APPROVED if body.approved else HUMAN_REVIEW_REJECTED
     await record_event(

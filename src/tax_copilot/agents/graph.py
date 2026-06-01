@@ -4,14 +4,12 @@
   START → image_quality
     → (unreadable) → reject_unreadable → save_result → END
     → (ok)         → intake → duplicate_check → build_retrieval_query → tax_law_retrieval
-                            → calculation → audit_prepare
-                              → (requires_human) → human_review[interrupt] → save_result → END
-                              → (auto)           → save_result → END
+                            → calculation → audit_prepare → save_result → END
 
 핵심 설계 규칙:
-- audit_prepare_node: LLM 작업 수행, state에 draft_decision 저장
-- human_review_node: interrupt()만 수행, LLM/DB/API 호출 금지
-- save_result_node: 두 경로 공통 종착점
+- audit_prepare_node: 판단 초안과 HITL 필요 여부를 state에 저장
+- save_result_node: 자동 승인 또는 검토 대기 초안을 final_decision으로 승격
+- 세무사 승인/반려 결정은 reviews API가 DB에 저장된 초안에 병합
 """
 
 from uuid import uuid4
@@ -23,7 +21,6 @@ from langgraph.graph.state import CompiledStateGraph
 from tax_copilot.agents.nodes.audit_prepare import audit_prepare_node
 from tax_copilot.agents.nodes.calculation import calculation_node
 from tax_copilot.agents.nodes.duplicate_check import duplicate_check_node
-from tax_copilot.agents.nodes.human_review import human_review_node
 from tax_copilot.agents.nodes.image_quality import image_quality_node
 from tax_copilot.agents.nodes.intake import intake_node
 from tax_copilot.agents.nodes.retrieval import build_retrieval_query_node, tax_law_retrieval_node
@@ -31,14 +28,9 @@ from tax_copilot.agents.nodes.save_result import reject_unreadable_node, save_re
 from tax_copilot.agents.state import AgentState
 
 
-def _route_after_quality(state: AgentState) -> str:
+async def _route_after_quality(state: AgentState) -> str:
     """이미지 품질에 따라 처리 경로를 결정한다."""
     return "reject_unreadable" if state.get("image_quality") == "unreadable" else "intake"
-
-
-def _route_after_audit(state: AgentState) -> str:
-    """HITL 필요 여부에 따라 경로를 결정한다."""
-    return "human_review" if state.get("requires_human") else "save_result"
 
 
 def build_graph(checkpointer: BaseCheckpointSaver) -> CompiledStateGraph:
@@ -54,20 +46,22 @@ def build_graph(checkpointer: BaseCheckpointSaver) -> CompiledStateGraph:
     builder.add_node("tax_law_retrieval", tax_law_retrieval_node)
     builder.add_node("calculation", calculation_node)
     builder.add_node("audit_prepare", audit_prepare_node)
-    builder.add_node("human_review", human_review_node)
     builder.add_node("save_result", save_result_node)
 
     # 엣지 연결
     builder.add_edge(START, "image_quality")
-    builder.add_conditional_edges("image_quality", _route_after_quality)
+    builder.add_conditional_edges(
+        "image_quality",
+        _route_after_quality,
+        {"reject_unreadable": "reject_unreadable", "intake": "intake"},
+    )
     builder.add_edge("reject_unreadable", "save_result")
     builder.add_edge("intake", "duplicate_check")
     builder.add_edge("duplicate_check", "build_retrieval_query")
     builder.add_edge("build_retrieval_query", "tax_law_retrieval")
     builder.add_edge("tax_law_retrieval", "calculation")
     builder.add_edge("calculation", "audit_prepare")
-    builder.add_conditional_edges("audit_prepare", _route_after_audit)
-    builder.add_edge("human_review", "save_result")
+    builder.add_edge("audit_prepare", "save_result")
     builder.add_edge("save_result", END)
 
     return builder.compile(checkpointer=checkpointer)

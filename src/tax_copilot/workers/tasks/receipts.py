@@ -8,7 +8,6 @@ idempotency 보장 전략:
 
 import asyncio
 import logging
-from datetime import UTC, datetime
 
 from sqlalchemy import select
 
@@ -17,7 +16,7 @@ from tax_copilot.agents.state import AgentState
 from tax_copilot.core.config import settings
 from tax_copilot.core.exceptions import DuplicateReceiptError
 from tax_copilot.infra.cache.redis_lock import acquire_lock, release_lock
-from tax_copilot.infra.database import AsyncSessionLocal
+from tax_copilot.infra.database import AsyncSessionLocal, engine
 from tax_copilot.infra.db.models.receipt import (
     STATUS_APPROVED,
     STATUS_FAILED,
@@ -73,6 +72,10 @@ async def _process_async(
 
     완료 후 Redis 락을 해제해 동일 파일의 재처리를 허용한다.
     """
+    # Celery는 asyncio.run()을 매 태스크마다 호출해 새 이벤트 루프를 만든다.
+    # 이전 루프에서 생성된 커넥션 풀을 초기화하지 않으면 "attached to a different loop" 오류가 난다.
+    await engine.dispose(close=False)
+
     lock_key = f"lock:receipt:{tenant_id}:{file_hash}"
     try:
         return await _run_workflow(
@@ -119,34 +122,44 @@ async def _run_workflow(
         await db.commit()
 
     # 2. LangGraph 실행 (PostgreSQL checkpointer로 HITL 상태 보존)
-    from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+    try:
+        from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 
-    async with AsyncPostgresSaver.from_conn_string(settings.checkpointer_url) as checkpointer:
-        await checkpointer.setup()
-        graph = build_graph(checkpointer=checkpointer)
+        async with AsyncPostgresSaver.from_conn_string(settings.checkpointer_url) as checkpointer:
+            await checkpointer.setup()
+            graph = build_graph(checkpointer=checkpointer)
 
-        initial_state = AgentState(
-            tenant_id=tenant_id,
-            receipt_id=receipt_id,
-            file_path=file_path,
-            file_hash=file_hash,
-            attempt_number=attempt_number,
-            transaction_date=None,
-            law_as_of_date=None,
-            law_corpus_version="v1",
-            image_quality=None,
-            parsed_receipt=None,
-            retrieval_query=None,
-            relevant_laws=[],
-            calculation_result=None,
-            draft_decision=None,
-            final_decision=None,
-            requires_human=False,
-            error_message=None,
-            messages=[],
-        )
-        config = {"configurable": {"thread_id": thread_id}}
-        final_state = await graph.ainvoke(initial_state, config=config)
+            initial_state = AgentState(
+                tenant_id=tenant_id,
+                receipt_id=receipt_id,
+                file_path=file_path,
+                file_hash=file_hash,
+                attempt_number=attempt_number,
+                transaction_date=None,
+                law_as_of_date=None,
+                law_corpus_version="v1",
+                image_quality=None,
+                parsed_receipt=None,
+                retrieval_query=None,
+                relevant_laws=[],
+                calculation_result=None,
+                draft_decision=None,
+                final_decision=None,
+                requires_human=False,
+                error_message=None,
+                messages=[],
+            )
+            config = {"configurable": {"thread_id": thread_id}}
+            final_state = await graph.ainvoke(initial_state, config=config)
+    except Exception as exc:
+        async with AsyncSessionLocal() as db:
+            result = await db.execute(select(Receipt).where(Receipt.id == receipt_id))
+            receipt = result.scalar_one_or_none()
+            if receipt is not None:
+                receipt.status = STATUS_FAILED
+                receipt.error_message = str(exc)
+                await db.commit()
+        raise
 
     # 3. 결과를 DB에 저장
     async with AsyncSessionLocal() as db:
@@ -165,6 +178,12 @@ async def _run_workflow(
 
         if is_interrupted or requires_human:
             receipt.status = STATUS_NEEDS_REVIEW
+            if final_decision:
+                receipt.parsed_data = final_decision
+                receipt.account_code = final_decision.get("account_code")
+                tx_date = final_state.get("transaction_date")
+                if tx_date is not None:
+                    receipt.transaction_date = tx_date
         elif final_decision:
             receipt.status = STATUS_APPROVED
             receipt.parsed_data = final_decision
@@ -176,7 +195,6 @@ async def _run_workflow(
             receipt.status = STATUS_FAILED
             receipt.error_message = "워크플로우가 결과를 반환하지 않았습니다."
 
-        receipt.updated_at = datetime.now(UTC)
         await db.commit()
 
     return {"status": receipt.status, "receipt_id": receipt_id}

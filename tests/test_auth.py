@@ -60,3 +60,23 @@ class TestPermissions:
     def test_client_fails_require_staff_or_admin(self) -> None:
         with pytest.raises(AuthorizationError):
             require_staff_or_admin("client")
+
+
+class TestLoginRateLimit:
+    def test_locks_after_repeated_failures(self) -> None:
+        from tax_copilot.api.v1.auth import (
+            _LOGIN_FAILURES,
+            _MAX_LOGIN_FAILURES,
+            _check_login_lock,
+            _record_login_failure,
+        )
+
+        key = "test:blocked@example.com"
+        _LOGIN_FAILURES.pop(key, None)
+        for _ in range(_MAX_LOGIN_FAILURES):
+            _record_login_failure(key)
+
+        with pytest.raises(AuthenticationError, match="로그인 시도가 너무 많습니다"):
+            _check_login_lock(key)
+
+        _LOGIN_FAILURES.pop(key, None)

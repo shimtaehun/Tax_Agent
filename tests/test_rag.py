@@ -12,6 +12,7 @@ import pytest
 
 from tax_copilot.core.rag.schemas import LawChunk
 from tax_copilot.infra.vector.qdrant import (
+    EMBEDDING_DIM,
     ensure_collection,
     get_client,
     reset_client,
@@ -44,10 +45,10 @@ def _make_chunk(
 
 
 def _dummy_vector(seed: int = 0) -> list[float]:
-    """테스트용 더미 벡터 (768차원, 정규화)."""
+    """테스트용 더미 벡터 (운영 임베딩 차원, 정규화)."""
     import math
 
-    v = [float(i + seed) for i in range(768)]
+    v = [float(i + seed) for i in range(EMBEDDING_DIM)]
     norm = math.sqrt(sum(x * x for x in v))
     return [x / norm for x in v]
 

@@ -44,6 +44,11 @@ class AccountCodeUpdateRequest(BaseModel):
     account_code: AccountCode
 
 
+class ReviewUpdateRequest(BaseModel):
+    account_code: str | None = None
+    review_comment: str | None = None
+
+
 class BatchReceiptResult(BaseModel):
     filename: str
     receipt_id: int | None = None

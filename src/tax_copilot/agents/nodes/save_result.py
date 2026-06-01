@@ -17,12 +17,13 @@ async def save_result_node(state: AgentState) -> dict:
     if state.get("final_decision") is None:
         # 자동 결정 경로 — draft를 final로 승격
         draft = state.get("draft_decision") or {}
+        requires_human = state.get("requires_human", False)
         return {
             "final_decision": {
                 **draft,
-                "human_approved": None,  # 자동 처리
+                "human_approved": None,
                 "human_comment": None,
-                "requires_human_review": False,
+                "requires_human_review": requires_human,
             }
         }
 

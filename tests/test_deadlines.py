@@ -105,6 +105,7 @@ class TestDeadlineEndpoints:
         mock_db.execute = AsyncMock(
             return_value=MagicMock(scalar_one_or_none=MagicMock(return_value=None))
         )
+        mock_db.add = MagicMock()
 
         async def override_get_db():
             yield mock_db
@@ -126,3 +127,14 @@ class TestDeadlineEndpoints:
         data = resp.json()
         assert "created_count" in data
         assert data["created_count"] == 6  # 4 VAT + 종합소득세 + 법인세
+
+    async def test_client_cannot_generate_deadlines(self, async_client) -> None:  # type: ignore[no-untyped-def]
+        from tax_copilot.auth.jwt import create_access_token
+
+        token = create_access_token(user_id=10, tenant_id=1, role="client", client_company_id=42)
+        resp = await async_client.post(
+            "/api/v1/deadlines/generate",
+            json={"client_company_id": 42, "fiscal_year": 2026},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 403

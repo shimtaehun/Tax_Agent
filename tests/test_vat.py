@@ -138,7 +138,11 @@ class TestVatSummaryEndpoint:
         mock_execute_result = MagicMock()
         mock_execute_result.scalars.return_value = mock_scalars
         mock_db = AsyncMock()
-        mock_db.execute.return_value = mock_execute_result
+        invoice_scalars = MagicMock()
+        invoice_scalars.all.return_value = []
+        invoice_result = MagicMock()
+        invoice_result.scalars.return_value = invoice_scalars
+        mock_db.execute = AsyncMock(side_effect=[mock_execute_result, invoice_result])
 
         async def override_get_db():
             yield mock_db
@@ -174,3 +178,14 @@ class TestVatSummaryEndpoint:
             headers=auth_headers,
         )
         assert resp.status_code == 422
+
+    async def test_client_cannot_query_other_company(self, async_client) -> None:  # type: ignore[no-untyped-def]
+        from tax_copilot.auth.jwt import create_access_token
+
+        token = create_access_token(user_id=10, tenant_id=1, role="client", client_company_id=42)
+        resp = await async_client.get(
+            "/api/v1/vat/summary",
+            params={"client_company_id": 99, "from_date": "2026-01-01", "to_date": "2026-03-31"},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 403

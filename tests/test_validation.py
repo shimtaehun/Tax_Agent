@@ -93,3 +93,21 @@ class TestAccountCodePatch:
 
         with pytest.raises(ValueError):
             AccountCodeUpdateRequest(account_code="잘못된값")
+
+    @pytest.mark.anyio
+    async def test_client_cannot_patch_account_code(self) -> None:
+        """client 역할은 계정과목 직접 수정 API를 호출할 수 없다."""
+        from httpx import ASGITransport, AsyncClient
+
+        from tax_copilot.api.main import app
+        from tax_copilot.auth.jwt import create_access_token
+
+        token = create_access_token(user_id=10, tenant_id=1, role="client", client_company_id=42)
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            resp = await client.patch(
+                "/api/v1/receipts/1/account-code",
+                headers={"Authorization": f"Bearer {token}"},
+                json={"account_code": "접대비"},
+            )
+
+        assert resp.status_code == 403

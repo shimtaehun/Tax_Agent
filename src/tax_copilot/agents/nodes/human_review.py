@@ -20,7 +20,7 @@ from langgraph.types import interrupt
 from tax_copilot.agents.state import AgentState
 
 
-async def human_review_node(state: AgentState) -> dict:
+def human_review_node(state: AgentState) -> dict:
     """세무사 검토를 기다린다. interrupt() 이후 코드는 resume 시 실행된다."""
     # interrupt()에 세무사에게 보여줄 정보를 전달
     human_decision: dict = interrupt(

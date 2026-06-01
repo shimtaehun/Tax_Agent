@@ -30,8 +30,13 @@ class TestBatchUpload:
         mock_db = AsyncMock()
         mock_db.flush = AsyncMock()
         mock_db.commit = AsyncMock()
+        mock_db.add = MagicMock()
+        company_result = MagicMock()
+        company_result.scalar_one_or_none.return_value = 1
+        no_duplicate_result = MagicMock()
+        no_duplicate_result.scalar_one_or_none.return_value = None
         mock_db.execute = AsyncMock(
-            return_value=MagicMock(scalar_one_or_none=MagicMock(return_value=None))
+            side_effect=[company_result, no_duplicate_result, no_duplicate_result]
         )
 
         async def override_get_db():
@@ -92,9 +97,11 @@ class TestBatchUpload:
         existing.id = 99
 
         mock_db = AsyncMock()
-        mock_db.execute = AsyncMock(
-            return_value=MagicMock(scalar_one_or_none=MagicMock(return_value=existing))
-        )
+        company_result = MagicMock()
+        company_result.scalar_one_or_none.return_value = 1
+        duplicate_result = MagicMock()
+        duplicate_result.scalar_one_or_none.return_value = existing
+        mock_db.execute = AsyncMock(side_effect=[company_result, duplicate_result])
 
         async def override_get_db():
             yield mock_db

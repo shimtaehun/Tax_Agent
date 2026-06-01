@@ -10,6 +10,17 @@
 from tax_copilot.agents.state import AgentState
 from tax_copilot.core.tax.schemas import AccountCode
 
+_NO_EXPIRY = 99991231
+
+
+def _int_to_date_str(val: int | None) -> str | None:
+    """YYYYMMDD 정수를 'YYYY-MM-DD' 문자열로 변환. None이거나 NO_EXPIRY면 None 반환."""
+    if val is None or val == _NO_EXPIRY:
+        return None
+    s = str(val)
+    return f"{s[:4]}-{s[4:6]}-{s[6:]}"
+
+
 _PROMPT_VERSION = "v0.3-rule-based"
 _MODEL_NAME = "rule-based"
 
@@ -171,6 +182,10 @@ async def audit_prepare_node(state: AgentState) -> dict:
                 "chunk_id": law.get("chunk_id"),
                 "law_name": law.get("law_name"),
                 "article_no": law.get("article_no"),
+                "paragraph_no": law.get("paragraph_no"),
+                "effective_from": _int_to_date_str(law.get("effective_from_int")),
+                "effective_to": _int_to_date_str(law.get("effective_to_int")),
+                "quoted_text": law.get("content", ""),
             }
             for law in laws
         ],

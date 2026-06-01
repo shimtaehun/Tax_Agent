@@ -8,12 +8,14 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from tax_copilot.api.deps import CurrentUser, get_current_user, get_db
+from tax_copilot.core.exceptions import AuthorizationError
 from tax_copilot.core.tax.risk_scoring import score_risk
 from tax_copilot.infra.db.models.receipt import (
     STATUS_APPROVED,
     STATUS_NEEDS_REVIEW,
     Receipt,
 )
+from tax_copilot.infra.db.models.user import ROLE_CLIENT
 from tax_copilot.schemas.risk import RiskIndicators, RiskScoreResponse
 
 logger = structlog.get_logger(__name__)
@@ -34,6 +36,12 @@ async def get_risk_score(
     거래일(transaction_date) 기준으로 필터링한다.
     STATUS_APPROVED 영수증만 지표 계산에 포함한다.
     """
+    if current_user.role == ROLE_CLIENT:
+        if current_user.client_company_id is None:
+            raise AuthorizationError("client 계정에 고객사가 연결되어 있지 않습니다.")
+        if client_company_id != current_user.client_company_id:
+            raise AuthorizationError("다른 고객사의 리스크 점수에 접근할 수 없습니다.")
+
     result = await db.execute(
         select(Receipt).where(
             Receipt.tenant_id == current_user.tenant_id,

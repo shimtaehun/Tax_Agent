@@ -21,6 +21,8 @@ class User(Base, TimestampMixin):
     role: Mapped[str] = mapped_column(String(20), default=ROLE_CLIENT)
     is_active: Mapped[bool] = mapped_column(default=True)
     # client 역할 사용자가 속한 고객사 ID (staff/admin은 NULL)
-    client_company_id: Mapped[int | None] = mapped_column(default=None, nullable=True)
+    client_company_id: Mapped[int | None] = mapped_column(
+        ForeignKey("client_companies.id"), default=None, nullable=True
+    )
 
     __table_args__ = (UniqueConstraint("tenant_id", "email", name="uq_users_tenant_email"),)

@@ -31,7 +31,7 @@ if TYPE_CHECKING:
     pass
 
 COLLECTION_NAME = "tax_laws"
-EMBEDDING_DIM = 768
+EMBEDDING_DIM = 3072
 
 # 프로세스 단위 싱글턴. 테스트에서는 _reset_client()로 초기화.
 _client: QdrantClient | None = None
@@ -68,6 +68,21 @@ def ensure_collection(client: QdrantClient) -> None:
             ),
             hnsw_config=HnswConfigDiff(m=16, ef_construct=100),
         )
+
+
+def recreate_collection(client: QdrantClient) -> None:
+    """기존 RAG 컬렉션을 삭제하고 현재 임베딩 차원으로 다시 생성한다."""
+    existing = {c.name for c in client.get_collections().collections}
+    if COLLECTION_NAME in existing:
+        client.delete_collection(collection_name=COLLECTION_NAME)
+    client.create_collection(
+        collection_name=COLLECTION_NAME,
+        vectors_config=VectorParams(
+            size=EMBEDDING_DIM,
+            distance=Distance.COSINE,
+        ),
+        hnsw_config=HnswConfigDiff(m=16, ef_construct=100),
+    )
 
 
 def upsert_chunks(

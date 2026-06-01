@@ -150,3 +150,42 @@ class TestExplanationEndpoint:
         data = resp.json()
         assert data["decision"] is None
         assert data["citations"] == []
+
+    async def test_client_cannot_access_other_company_explanation(self) -> None:
+        """client는 같은 tenant라도 다른 고객사 영수증 판단 근거를 볼 수 없다."""
+        from unittest.mock import AsyncMock, MagicMock
+
+        from httpx import ASGITransport, AsyncClient
+
+        from tax_copilot.api.deps import get_db
+        from tax_copilot.api.main import app
+        from tax_copilot.auth.jwt import create_access_token
+        from tax_copilot.infra.db.models.receipt import Receipt
+
+        mock_receipt = MagicMock(spec=Receipt)
+        mock_receipt.id = 3
+        mock_receipt.tenant_id = 1
+        mock_receipt.client_company_id = 99
+
+        found_result = MagicMock()
+        found_result.scalar_one_or_none.return_value = mock_receipt
+        mock_db = AsyncMock()
+        mock_db.execute = AsyncMock(return_value=found_result)
+
+        async def override_get_db():
+            yield mock_db
+
+        token = create_access_token(user_id=10, tenant_id=1, role="client", client_company_id=42)
+        app.dependency_overrides[get_db] = override_get_db
+        try:
+            async with AsyncClient(
+                transport=ASGITransport(app=app), base_url="http://test"
+            ) as client:
+                resp = await client.get(
+                    "/api/v1/receipts/3/explanation",
+                    headers={"Authorization": f"Bearer {token}"},
+                )
+        finally:
+            app.dependency_overrides.pop(get_db, None)
+
+        assert resp.status_code == 400

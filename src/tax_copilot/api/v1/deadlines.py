@@ -9,11 +9,13 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from tax_copilot.api.deps import CurrentUser, get_current_user, get_db
+from tax_copilot.auth.permissions import require_staff_or_admin
 from tax_copilot.core.tax.deadlines import generate_annual_deadlines
 from tax_copilot.infra.db.models.filing_deadline import (
     DEADLINE_STATUS_COMPLETED,
     FilingDeadline,
 )
+from tax_copilot.infra.db.models.user import ROLE_CLIENT
 from tax_copilot.schemas.deadlines import (
     DeadlineListResponse,
     FilingDeadlineResponse,
@@ -51,7 +53,17 @@ async def list_deadlines(
 ) -> DeadlineListResponse:
     """신고 기한 목록을 조회한다."""
     filters = [FilingDeadline.tenant_id == current_user.tenant_id]
-    if client_company_id is not None:
+    if current_user.role == ROLE_CLIENT:
+        if current_user.client_company_id is None:
+            from tax_copilot.core.exceptions import AuthorizationError
+
+            raise AuthorizationError("client 계정에 고객사가 연결되어 있지 않습니다.")
+        if client_company_id is not None and client_company_id != current_user.client_company_id:
+            from tax_copilot.core.exceptions import AuthorizationError
+
+            raise AuthorizationError("다른 고객사의 신고 기한에 접근할 수 없습니다.")
+        filters.append(FilingDeadline.client_company_id == current_user.client_company_id)
+    elif client_company_id is not None:
         filters.append(FilingDeadline.client_company_id == client_company_id)
     if fiscal_year is not None:
         filters.append(FilingDeadline.fiscal_year == fiscal_year)
@@ -75,6 +87,7 @@ async def generate_deadlines(
 
     이미 존재하는 항목은 건너뛴다 (멱등).
     """
+    require_staff_or_admin(current_user.role)
     deadlines = generate_annual_deadlines(body.fiscal_year)
     created = 0
     skipped = 0
@@ -127,6 +140,7 @@ async def complete_deadline(
     current_user: CurrentUser = Depends(get_current_user),
 ) -> FilingDeadlineResponse:
     """신고 완료로 표시한다."""
+    require_staff_or_admin(current_user.role)
     result = await db.execute(
         select(FilingDeadline).where(
             FilingDeadline.id == deadline_id,

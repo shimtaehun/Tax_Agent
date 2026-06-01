@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     redis_url: str = Field(default="redis://localhost:6379/0")
     secret_key: str = Field(default=_INSECURE_SECRET)
     gemini_api_key: str = Field(default="")
+    law_api_key: str = Field(default="")  # 법제처 Open API OC 키
     qdrant_url: str = Field(default="http://localhost:6333")
     storage_backend: str = Field(default="local")
     local_storage_path: str = Field(default="./uploads")

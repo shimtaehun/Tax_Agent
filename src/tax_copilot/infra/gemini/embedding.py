@@ -33,10 +33,17 @@ async def embed_query(text: str) -> list[float]:
 
 
 async def embed_documents(texts: list[str]) -> list[list[float]]:
-    """법령 chunk 목록을 벡터로 변환한다."""
+    """법령 chunk 목록을 벡터로 변환한다.
+
+    Gemini embed_content에 리스트를 넘기면 임베딩을 1개만 반환하므로
+    텍스트별로 개별 호출한다.
+    """
     client = _get_client()
-    result = client.models.embed_content(
-        model=_MODEL,
-        contents=[_DOC_PREFIX + t for t in texts],
-    )
-    return [e.values for e in result.embeddings]
+    vectors = []
+    for text in texts:
+        result = client.models.embed_content(
+            model=_MODEL,
+            contents=_DOC_PREFIX + text,
+        )
+        vectors.append(result.embeddings[0].values)
+    return vectors

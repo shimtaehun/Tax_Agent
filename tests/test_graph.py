@@ -13,7 +13,6 @@ import tempfile
 
 import pytest
 from langgraph.checkpoint.memory import MemorySaver
-from langgraph.types import Command
 
 from tax_copilot.agents.graph import build_graph, generate_thread_id
 from tax_copilot.agents.state import AgentState
@@ -48,6 +47,14 @@ def graph():
     """MemorySaver를 사용하는 테스트용 그래프."""
     saver = MemorySaver()
     return build_graph(checkpointer=saver)
+
+
+@pytest.fixture(autouse=True)
+def disable_external_gemini(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Graph tests must not depend on a real Gemini API key from local .env files."""
+    from tax_copilot.core.config import settings
+
+    monkeypatch.setattr(settings, "gemini_api_key", "")
 
 
 @pytest.fixture
@@ -113,58 +120,22 @@ class TestAutoDecisionPath:
 
 
 class TestHITLPath:
-    """HITL interrupt/resume 전체 흐름.
+    """HITL 필요 시 검토 초안을 저장하고 그래프는 종료한다."""
 
-    LangGraph 1.2.x에서 interrupt()는 예외를 발생시키지 않는다.
-    대신 그래프가 일시 중단되고 반환 값에 __interrupt__ 키가 포함된다.
-    resume은 Command(resume=...) + 동일 thread_id config로 수행한다.
-    """
-
-    async def test_interrupt_fires_and_resume_succeeds(self, graph, valid_file: str) -> None:
-        """interrupt가 발동되고 Command(resume=...)로 재개에 성공한다."""
+    async def test_human_review_path_completes_with_review_flag(
+        self, graph, valid_file: str
+    ) -> None:
         state = _make_state(valid_file)
         thread_id = generate_thread_id(1, "abc123", 1, 1)
         config = {"configurable": {"thread_id": thread_id}}
 
-        # 1단계: 그래프 실행 — human_review_node에서 interrupt 발동
-        # LangGraph 1.2.x: 예외 없이 __interrupt__ 키를 포함한 dict 반환
-        interrupted_state = await graph.ainvoke(state, config=config)
+        final_state = await graph.ainvoke(state, config=config)
 
-        assert "__interrupt__" in interrupted_state
-        interrupts = interrupted_state["__interrupt__"]
-        assert len(interrupts) == 1
-        assert interrupts[0].value["type"] == "TAX_REVIEW_REQUIRED"
-        assert interrupts[0].value["receipt_id"] == 1
-
-        # 2단계: 세무사가 승인 결정을 전송하여 resume
-        final_state = await graph.ainvoke(
-            Command(resume={"approved": True, "comment": "세무사 검토 후 승인"}),
-            config=config,
-        )
-
-        # resume 이후 final_decision이 설정되고 __interrupt__가 없어야 함
         assert "__interrupt__" not in final_state
         assert final_state["final_decision"] is not None
-        assert final_state["final_decision"]["human_approved"] is True
-        assert final_state["final_decision"]["human_comment"] == "세무사 검토 후 승인"
-        assert final_state["final_decision"]["requires_human_review"] is False
-
-    async def test_resume_with_rejection(self, graph, valid_file: str) -> None:
-        """반려 결정도 올바르게 처리된다."""
-        state = _make_state(valid_file, receipt_id=2)
-        thread_id = generate_thread_id(1, "abc123", 2, 1)
-        config = {"configurable": {"thread_id": thread_id}}
-
-        interrupted_state = await graph.ainvoke(state, config=config)
-        assert "__interrupt__" in interrupted_state
-
-        final_state = await graph.ainvoke(
-            Command(resume={"approved": False, "comment": "증빙 불충분"}),
-            config=config,
-        )
-
-        assert final_state["final_decision"]["human_approved"] is False
-        assert final_state["final_decision"]["human_comment"] == "증빙 불충분"
+        assert final_state["final_decision"]["human_approved"] is None
+        assert final_state["final_decision"]["requires_human_review"] is True
+        assert final_state["requires_human"] is True
 
 
 class TestUnreadablePath:

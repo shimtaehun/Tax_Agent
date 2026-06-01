@@ -1,26 +1,44 @@
 import asyncio
+import csv
+import io
 import json
 import uuid
 
 import structlog
 from fastapi import APIRouter, Depends, Query, UploadFile
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
+from sqlalchemy import delete as sql_delete
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from tax_copilot.api.deps import CurrentUser, get_current_user, get_db
 from tax_copilot.audit.events import record_event
-from tax_copilot.core.exceptions import DuplicateReceiptError, ValidationError
+from tax_copilot.auth.permissions import require_staff_or_admin
+from tax_copilot.core.exceptions import AuthorizationError, DuplicateReceiptError, ValidationError
 from tax_copilot.core.receipts.validation import compute_file_hash, validate_receipt_file
+from tax_copilot.infra.cache.redis_lock import release_lock
 from tax_copilot.infra.database import AsyncSessionLocal
 from tax_copilot.infra.db.models.audit_event import (
     ACCOUNT_CODE_UPDATED,
+    RECEIPT_RETRY_REQUESTED,
     RECEIPT_UPLOADED,
     AuditEvent,
 )
-from tax_copilot.infra.db.models.receipt import STATUS_PENDING, Receipt
+from tax_copilot.infra.db.models.client_company import ClientCompany
+from tax_copilot.infra.db.models.receipt import (
+    STATUS_FAILED,
+    STATUS_PENDING,
+    STATUS_PROCESSING,
+    Receipt,
+)
+from tax_copilot.infra.db.models.receipt_comment import ReceiptComment
 from tax_copilot.infra.db.models.user import ROLE_CLIENT
 from tax_copilot.infra.storage.local import save_receipt
+from tax_copilot.schemas.comments import (
+    CommentCreateRequest,
+    CommentListResponse,
+    CommentResponse,
+)
 from tax_copilot.schemas.explanation import (
     AuditEvent as AuditEventSchema,
 )
@@ -36,6 +54,7 @@ from tax_copilot.schemas.receipts import (
     ReceiptListResponse,
     ReceiptStatusResponse,
     ReceiptUploadResponse,
+    ReviewUpdateRequest,
 )
 from tax_copilot.workers.tasks.receipts import dispatch_receipt_task
 
@@ -85,7 +104,9 @@ async def list_receipts(
     """영수증 목록을 조회한다. status로 필터링 가능."""
     base_where = [Receipt.tenant_id == current_user.tenant_id]
     # client 역할은 자신의 고객사 영수증만 조회 가능
-    if current_user.role == ROLE_CLIENT and current_user.client_company_id is not None:
+    if current_user.role == ROLE_CLIENT:
+        if current_user.client_company_id is None:
+            raise AuthorizationError("client 계정에 고객사가 연결되어 있지 않습니다.")
         base_where.append(Receipt.client_company_id == current_user.client_company_id)
     if status:
         base_where.append(Receipt.status == status)
@@ -108,14 +129,43 @@ async def list_receipts(
     )
 
 
+async def _resolve_client_company_id(
+    current_user: CurrentUser, param: int | None, db: AsyncSession
+) -> int:
+    """업로드 요청의 client_company_id를 결정한다.
+
+    client 역할: JWT 클레임에서 자동 추출 (파라미터 무시).
+    staff/admin: 요청 파라미터 필수.
+    """
+    if current_user.role == ROLE_CLIENT:
+        if current_user.client_company_id is None:
+            raise AuthorizationError("client 계정에 고객사가 연결되어 있지 않습니다.")
+        return current_user.client_company_id
+    # staff / admin
+    if param is None:
+        raise ValidationError("client_company_id가 필요합니다.")
+    result = await db.execute(
+        select(ClientCompany.id).where(
+            ClientCompany.id == param,
+            ClientCompany.tenant_id == current_user.tenant_id,
+            ClientCompany.is_active.is_(True),
+        )
+    )
+    if result.scalar_one_or_none() is None:
+        raise ValidationError("유효한 고객사를 찾을 수 없습니다.")
+    return param
+
+
 @router.post("", response_model=ReceiptUploadResponse, status_code=201)
 async def upload_receipt(
     file: UploadFile,
-    client_company_id: int,
+    client_company_id: int | None = None,
     current_user: CurrentUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> ReceiptUploadResponse:
     """영수증 파일을 업로드하고 처리 대기 상태로 저장한다."""
+    resolved_company_id = await _resolve_client_company_id(current_user, client_company_id, db)
+
     if file.filename is None:
         raise ValidationError("파일명이 없습니다.")
 
@@ -124,13 +174,36 @@ async def upload_receipt(
     file_hash = compute_file_hash(content)
 
     # 동일 tenant에서 같은 파일 중복 업로드 방지
-    existing = await db.execute(
+    existing_result = await db.execute(
         select(Receipt).where(
             Receipt.tenant_id == current_user.tenant_id,
             Receipt.file_hash == file_hash,
         )
     )
-    if existing.scalar_one_or_none() is not None:
+    existing_receipt = existing_result.scalar_one_or_none()
+    if existing_receipt is not None:
+        if existing_receipt.status == STATUS_FAILED:
+            # FAILED 영수증은 새 레코드 대신 기존 레코드를 재처리
+            next_attempt = existing_receipt.attempt_number + 1
+            existing_receipt.status = STATUS_PENDING
+            existing_receipt.attempt_number = next_attempt
+            existing_receipt.error_message = None
+            await db.commit()
+            try:
+                dispatch_receipt_task(
+                    tenant_id=current_user.tenant_id,
+                    receipt_id=existing_receipt.id,
+                    file_path=existing_receipt.file_path,
+                    file_hash=file_hash,
+                    attempt_number=next_attempt,
+                )
+            except Exception:
+                logger.exception("receipt.redispatch_failed", receipt_id=existing_receipt.id)
+            return ReceiptUploadResponse(
+                receipt_id=existing_receipt.id,
+                status=STATUS_PENDING,
+                message="이전에 실패한 영수증을 재처리합니다.",
+            )
         raise DuplicateReceiptError("이미 처리된 영수증입니다.")
 
     ext = file.filename.rsplit(".", 1)[-1].lower()
@@ -138,7 +211,7 @@ async def upload_receipt(
 
     receipt = Receipt(
         tenant_id=current_user.tenant_id,
-        client_company_id=client_company_id,
+        client_company_id=resolved_company_id,
         uploaded_by=current_user.user_id,
         file_path=file_path,
         file_hash=file_hash,
@@ -160,7 +233,7 @@ async def upload_receipt(
             "filename": file.filename,
             "mime_type": mime,
             "file_size_bytes": len(content),
-            "client_company_id": client_company_id,
+            "client_company_id": resolved_company_id,
         },
     )
 
@@ -210,7 +283,9 @@ async def get_receipt_status(
 ) -> ReceiptStatusResponse:
     """영수증 처리 상태를 조회한다."""
     filters = [Receipt.id == receipt_id, Receipt.tenant_id == current_user.tenant_id]
-    if current_user.role == ROLE_CLIENT and current_user.client_company_id is not None:
+    if current_user.role == ROLE_CLIENT:
+        if current_user.client_company_id is None:
+            raise AuthorizationError("client 계정에 고객사가 연결되어 있지 않습니다.")
         filters.append(Receipt.client_company_id == current_user.client_company_id)
     result = await db.execute(select(Receipt).where(*filters))
     receipt = result.scalar_one_or_none()
@@ -228,6 +303,8 @@ async def update_account_code(
     db: AsyncSession = Depends(get_db),
 ) -> ReceiptStatusResponse:
     """세무사가 계정과목을 직접 수정 확정한다."""
+    require_staff_or_admin(current_user.role)
+
     result = await db.execute(
         select(Receipt).where(
             Receipt.id == receipt_id,
@@ -265,7 +342,7 @@ async def update_account_code(
 @router.post("/batch", response_model=BatchUploadResponse, status_code=201)
 async def batch_upload_receipts(
     files: list[UploadFile],
-    client_company_id: int,
+    client_company_id: int | None = None,
     current_user: CurrentUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> BatchUploadResponse:
@@ -277,6 +354,8 @@ async def batch_upload_receipts(
     """
     if len(files) > _BATCH_MAX_FILES:
         raise ValidationError(f"한 번에 최대 {_BATCH_MAX_FILES}개까지 업로드할 수 있습니다.")
+
+    resolved_company_id = await _resolve_client_company_id(current_user, client_company_id, db)
 
     batch_id = str(uuid.uuid4())
     results: list[BatchReceiptResult] = []
@@ -307,7 +386,7 @@ async def batch_upload_receipts(
 
             receipt = Receipt(
                 tenant_id=current_user.tenant_id,
-                client_company_id=client_company_id,
+                client_company_id=resolved_company_id,
                 uploaded_by=current_user.user_id,
                 file_path=file_path,
                 file_hash=file_hash,
@@ -330,7 +409,7 @@ async def batch_upload_receipts(
                     "filename": filename,
                     "mime_type": mime,
                     "file_size_bytes": len(content),
-                    "client_company_id": client_company_id,
+                    "client_company_id": resolved_company_id,
                     "batch_id": batch_id,
                 },
             )
@@ -398,6 +477,7 @@ async def get_receipt_explanation(
         from fastapi import HTTPException
 
         raise HTTPException(status_code=404, detail="영수증을 찾을 수 없습니다.")
+    _check_receipt_access(receipt, current_user)
 
     # 감사 이벤트 조회
     events_result = await db.execute(
@@ -433,6 +513,8 @@ async def get_receipt_explanation(
             human_comment=parsed.get("human_comment"),
         )
         for c in parsed.get("citations", []):
+            if not c.get("effective_from"):
+                continue
             citations.append(
                 CitationResponse(
                     chunk_id=c.get("chunk_id", ""),
@@ -473,7 +555,7 @@ _SSE_MAX_POLLS = 60  # 최대 2분
 async def receipt_status_events(
     receipt_id: int,
     current_user: CurrentUser = Depends(get_current_user),
-) -> StreamingResponse:
+) -> Response:
     """영수증 처리 상태를 SSE로 스트리밍한다.
 
     처리 완료(터미널 상태) 또는 최대 2분 경과 시 스트림을 닫는다.
@@ -486,7 +568,12 @@ async def receipt_status_events(
                 receipt = await db.get(Receipt, receipt_id)
 
             if receipt is None or receipt.tenant_id != current_user.tenant_id:
-                break
+                return
+            if (
+                current_user.role == ROLE_CLIENT
+                and receipt.client_company_id != current_user.client_company_id
+            ):
+                return
 
             if receipt.status != last_status:
                 last_status = receipt.status
@@ -502,3 +589,297 @@ async def receipt_status_events(
         yield "event: timeout\ndata: {}\n\n"
 
     return StreamingResponse(generate(), media_type="text/event-stream")
+
+
+def _check_receipt_access(receipt: Receipt | None, current_user: CurrentUser) -> Receipt:
+    """영수증이 존재하는지, client 역할이면 자기 회사 소속인지 확인한다."""
+    if receipt is None:
+        raise ValidationError("영수증을 찾을 수 없습니다.")
+    if current_user.role == ROLE_CLIENT:
+        if current_user.client_company_id is None:
+            raise AuthorizationError("client 계정에 고객사가 연결되어 있지 않습니다.")
+        if receipt.client_company_id != current_user.client_company_id:
+            raise ValidationError("영수증을 찾을 수 없습니다.")
+    return receipt
+
+
+@router.get("/{receipt_id}/comments", response_model=CommentListResponse)
+async def list_comments(
+    receipt_id: int,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> CommentListResponse:
+    """영수증 코멘트 목록을 반환한다."""
+    receipt_result = await db.execute(
+        select(Receipt).where(
+            Receipt.id == receipt_id,
+            Receipt.tenant_id == current_user.tenant_id,
+        )
+    )
+    _check_receipt_access(receipt_result.scalar_one_or_none(), current_user)
+
+    comments_result = await db.execute(
+        select(ReceiptComment)
+        .where(ReceiptComment.receipt_id == receipt_id)
+        .order_by(ReceiptComment.created_at)
+    )
+    comments = comments_result.scalars().all()
+
+    return CommentListResponse(
+        items=[
+            CommentResponse(
+                id=c.id,
+                receipt_id=c.receipt_id,
+                author_id=c.author_id,
+                body=c.body,
+                created_at=c.created_at,
+            )
+            for c in comments
+        ]
+    )
+
+
+@router.post("/{receipt_id}/comments", response_model=CommentResponse, status_code=201)
+async def create_comment(
+    receipt_id: int,
+    body: CommentCreateRequest,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> CommentResponse:
+    """영수증에 코멘트를 작성한다."""
+    receipt_result = await db.execute(
+        select(Receipt).where(
+            Receipt.id == receipt_id,
+            Receipt.tenant_id == current_user.tenant_id,
+        )
+    )
+    _check_receipt_access(receipt_result.scalar_one_or_none(), current_user)
+
+    comment = ReceiptComment(
+        receipt_id=receipt_id,
+        author_id=current_user.user_id,
+        body=body.body,
+    )
+    db.add(comment)
+    await db.flush()
+    await db.commit()
+    await db.refresh(comment)
+
+    logger.info("comment.created", receipt_id=receipt_id, author_id=current_user.user_id)
+
+    return CommentResponse(
+        id=comment.id,
+        receipt_id=comment.receipt_id,
+        author_id=comment.author_id,
+        body=comment.body,
+        created_at=comment.created_at,
+    )
+
+
+@router.patch("/{receipt_id}/review", response_model=ReceiptStatusResponse)
+async def update_review_info(
+    receipt_id: int,
+    body: ReviewUpdateRequest,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> ReceiptStatusResponse:
+    """계정과목 또는 검토 의견을 수정한다. staff/admin 전용."""
+    require_staff_or_admin(current_user.role)
+
+    result = await db.execute(
+        select(Receipt).where(
+            Receipt.id == receipt_id,
+            Receipt.tenant_id == current_user.tenant_id,
+        )
+    )
+    receipt = result.scalar_one_or_none()
+    if receipt is None:
+        raise ValidationError(f"영수증 {receipt_id}를 찾을 수 없습니다.")
+
+    if body.account_code is not None:
+        receipt.account_code = body.account_code
+    if body.review_comment is not None:
+        receipt.review_comment = body.review_comment
+
+    await db.commit()
+    await db.refresh(receipt)
+
+    logger.info("receipt.review_updated", receipt_id=receipt_id, actor=current_user.user_id)
+    return _to_status_response(receipt)
+
+
+@router.delete("/{receipt_id}", status_code=204)
+async def delete_receipt(
+    receipt_id: int,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> None:
+    """영수증을 삭제한다. 관련 코멘트도 함께 삭제. staff/admin 전용."""
+    require_staff_or_admin(current_user.role)
+
+    result = await db.execute(
+        select(Receipt).where(
+            Receipt.id == receipt_id,
+            Receipt.tenant_id == current_user.tenant_id,
+        )
+    )
+    receipt = result.scalar_one_or_none()
+    if receipt is None:
+        raise ValidationError(f"영수증 {receipt_id}를 찾을 수 없습니다.")
+
+    # FK 제약 처리: 코멘트 삭제, 감사 이벤트는 receipt_id를 NULL로
+    await db.execute(sql_delete(ReceiptComment).where(ReceiptComment.receipt_id == receipt_id))
+    await db.execute(
+        update(AuditEvent).where(AuditEvent.receipt_id == receipt_id).values(receipt_id=None)
+    )
+    await db.delete(receipt)
+    await db.commit()
+
+    logger.info("receipt.deleted", receipt_id=receipt_id, actor=current_user.user_id)
+
+
+@router.post("/{receipt_id}/retry", response_model=ReceiptStatusResponse)
+async def retry_receipt_processing(
+    receipt_id: int,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> ReceiptStatusResponse:
+    """실패 또는 대기 중인 영수증 처리를 다시 큐에 넣는다. staff/admin 전용."""
+    require_staff_or_admin(current_user.role)
+
+    result = await db.execute(
+        select(Receipt).where(
+            Receipt.id == receipt_id,
+            Receipt.tenant_id == current_user.tenant_id,
+        )
+    )
+    receipt = result.scalar_one_or_none()
+    if receipt is None:
+        raise ValidationError(f"영수증 {receipt_id}를 찾을 수 없습니다.")
+    if receipt.status == STATUS_PROCESSING:
+        raise ValidationError("이미 처리 중인 영수증입니다.")
+
+    previous_status = receipt.status
+    next_attempt = receipt.attempt_number + 1
+    receipt.status = STATUS_PENDING
+    receipt.attempt_number = next_attempt
+    receipt.error_message = None
+
+    await record_event(
+        db,
+        tenant_id=current_user.tenant_id,
+        event_type=RECEIPT_RETRY_REQUESTED,
+        actor_user_id=current_user.user_id,
+        receipt_id=receipt.id,
+        payload={"attempt_number": next_attempt, "previous_status": previous_status},
+    )
+    await db.commit()
+
+    try:
+        task_id = dispatch_receipt_task(
+            tenant_id=current_user.tenant_id,
+            receipt_id=receipt.id,
+            file_path=receipt.file_path,
+            file_hash=receipt.file_hash,
+            attempt_number=next_attempt,
+        )
+        await db.execute(
+            update(Receipt).where(Receipt.id == receipt.id).values(celery_task_id=task_id)
+        )
+        await db.commit()
+    except DuplicateReceiptError:
+        logger.warning("receipt.retry_duplicate", receipt_id=receipt.id)
+    except Exception:
+        receipt.status = STATUS_FAILED
+        receipt.error_message = "재처리 큐 등록에 실패했습니다."
+        await db.commit()
+        logger.exception("receipt.retry_dispatch_failed", receipt_id=receipt.id)
+
+    await db.refresh(receipt)
+    return _to_status_response(receipt)
+
+
+@router.post("/{receipt_id}/cancel", response_model=ReceiptStatusResponse)
+async def cancel_receipt_processing(
+    receipt_id: int,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> ReceiptStatusResponse:
+    """대기 중이거나 처리 중인 영수증을 취소한다. staff/admin 전용."""
+    require_staff_or_admin(current_user.role)
+
+    result = await db.execute(
+        select(Receipt).where(
+            Receipt.id == receipt_id,
+            Receipt.tenant_id == current_user.tenant_id,
+        )
+    )
+    receipt = result.scalar_one_or_none()
+    if receipt is None:
+        raise ValidationError(f"영수증 {receipt_id}를 찾을 수 없습니다.")
+    if receipt.status not in (STATUS_PENDING, STATUS_PROCESSING):
+        raise ValidationError("대기 중이거나 처리 중인 영수증만 취소할 수 있습니다.")
+
+    # Celery 태스크 취소 시도
+    if receipt.celery_task_id:
+        try:
+            from tax_copilot.workers.celery_app import celery_app
+
+            celery_app.control.revoke(receipt.celery_task_id, terminate=True)
+        except Exception:
+            logger.warning("receipt.cancel_revoke_failed", receipt_id=receipt_id)
+
+    # Redis 락 해제
+    lock_key = f"lock:receipt:{receipt.tenant_id}:{receipt.file_hash}"
+    release_lock(lock_key)
+
+    receipt.status = STATUS_FAILED
+    receipt.error_message = "사용자가 처리를 취소했습니다."
+    await db.commit()
+    await db.refresh(receipt)
+
+    logger.info("receipt.cancelled", receipt_id=receipt_id, actor=current_user.user_id)
+    return _to_status_response(receipt)
+
+
+@router.get("/{receipt_id}/audit.csv")
+async def export_receipt_audit_csv(
+    receipt_id: int,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> StreamingResponse:
+    """영수증 감사 로그를 CSV로 내려받는다."""
+    result = await db.execute(
+        select(Receipt).where(
+            Receipt.id == receipt_id,
+            Receipt.tenant_id == current_user.tenant_id,
+        )
+    )
+    receipt = _check_receipt_access(result.scalar_one_or_none(), current_user)
+
+    events_result = await db.execute(
+        select(AuditEvent)
+        .where(
+            AuditEvent.receipt_id == receipt.id,
+            AuditEvent.tenant_id == current_user.tenant_id,
+        )
+        .order_by(AuditEvent.created_at)
+    )
+    events = events_result.scalars().all()
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["created_at", "event_type", "actor_user_id", "payload"])
+    for event in events:
+        writer.writerow(
+            [
+                event.created_at.isoformat(),
+                event.event_type,
+                event.actor_user_id or "",
+                json.dumps(event.payload or {}, ensure_ascii=False),
+            ]
+        )
+    output.seek(0)
+
+    headers = {"Content-Disposition": f'attachment; filename="receipt-{receipt.id}-audit.csv"'}
+    return Response(content=output.getvalue(), media_type="text/csv", headers=headers)

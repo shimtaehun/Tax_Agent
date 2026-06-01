@@ -1,12 +1,11 @@
-"""샘플 법령 코퍼스 시드 스크립트.
+"""법령 RAG 코퍼스 시드 스크립트.
 
-Qdrant in-memory 또는 외부 서버에 부가가치세법 샘플 chunk를 업로드한다.
-실행: python scripts/seed_law_corpus.py [--in-memory] [--qdrant-url URL]
+기본 실행은 법제처 Open API에서 현행법령, 국세청 법령해석, 조세심판원
+특별행정심판례를 수집해 Qdrant에 업로드한다.
 
---in-memory: 테스트용 인-메모리 Qdrant (프로세스 종료 시 데이터 사라짐)
---qdrant-url: 외부 Qdrant URL (기본값: settings.qdrant_url)
-
-Gemini API 키 필요. 환경 변수 GEMINI_API_KEY 또는 .env 파일에 설정.
+실행 예:
+  python scripts/seed_law_corpus.py --reset-collection
+  python scripts/seed_law_corpus.py --dry-run --law-name 부가가치세법 --query 세금계산서
 """
 
 import argparse
@@ -21,9 +20,16 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from tax_copilot.core.rag.schemas import LawChunk
 from tax_copilot.infra.gemini.embedding import embed_documents
+from tax_copilot.infra.law_open_data import (
+    DEFAULT_LAW_NAMES,
+    DEFAULT_SEARCH_QUERIES,
+    LawOpenDataClient,
+    build_law_chunks,
+)
 from tax_copilot.infra.vector.qdrant import (
     ensure_collection,
     get_client,
+    recreate_collection,
     reset_client,
     upsert_chunks,
 )
@@ -119,7 +125,7 @@ def _make_chunk_id(law_id: str, article_no: str, paragraph_no: str | None, conte
     return f"{law_id}-{art_slug}{para_slug}-{hash8}"
 
 
-def build_chunks() -> list[LawChunk]:
+def build_sample_chunks() -> list[LawChunk]:
     """RAW_CHUNKS에서 LawChunk 목록을 생성한다."""
     chunks = []
     for raw in RAW_CHUNKS:
@@ -146,26 +152,86 @@ def build_chunks() -> list[LawChunk]:
     return chunks
 
 
-async def main(in_memory: bool, qdrant_url: str | None) -> None:
-    reset_client()
-    client = get_client(in_memory=in_memory, url=qdrant_url)
-    ensure_collection(client)
+def collect_law_api_chunks(args: argparse.Namespace) -> list[LawChunk]:
+    """법제처 API에서 RAG chunk를 수집한다."""
+    client = LawOpenDataClient()
+    corpus_version = f"law-api-{date.today().strftime('%Y%m%d')}"
+    documents = []
+    law_names = args.law_name or list(DEFAULT_LAW_NAMES)
+    queries = args.query or list(DEFAULT_SEARCH_QUERIES)
 
-    chunks = build_chunks()
+    if not args.skip_laws:
+        documents.extend(client.fetch_current_laws(law_names))
+    if not args.skip_interpretations:
+        documents.extend(
+            client.fetch_nts_interpretations(
+                queries,
+                max_pages=args.max_pages,
+                display=args.display,
+            )
+        )
+    if not args.skip_tribunal:
+        documents.extend(
+            client.fetch_tax_tribunal_cases(
+                queries,
+                max_pages=args.max_pages,
+                display=args.display,
+            )
+        )
+
+    return build_law_chunks(documents, corpus_version=corpus_version, max_chars=args.max_chars)
+
+
+async def main(args: argparse.Namespace) -> None:
+    reset_client()
+
+    if args.source == "sample":
+        chunks = build_sample_chunks()
+    else:
+        chunks = collect_law_api_chunks(args)
+
+    if args.limit_chunks is not None:
+        chunks = chunks[: args.limit_chunks]
+    print(f"수집된 chunk: {len(chunks)}개")
+    if not chunks:
+        raise SystemExit("수집된 법령 chunk가 없습니다. 검색어/페이지 설정을 확인하세요.")
+    if args.dry_run:
+        for chunk in chunks[:5]:
+            print(f"- {chunk.law_name} {chunk.article_no}: {chunk.content[:120]}")
+        return
+
     print(f"임베딩 중... ({len(chunks)}개 chunk)")
 
     texts = [chunk.content for chunk in chunks]
     vectors = await embed_documents(texts)
 
+    client = get_client(in_memory=args.in_memory, url=args.qdrant_url)
+    if args.reset_collection:
+        recreate_collection(client)
+    else:
+        ensure_collection(client)
+
     upsert_chunks(client, chunks, vectors)
     print(f"Qdrant에 {len(chunks)}개 chunk 업로드 완료.")
-    print(f"corpus_version: {_CORPUS_VERSION}")
+    print(f"corpus_version: {chunks[0].corpus_version}")
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
+    parser.add_argument("--source", choices=("law-api", "sample"), default="law-api")
     parser.add_argument("--in-memory", action="store_true")
     parser.add_argument("--qdrant-url", default=None)
+    parser.add_argument("--reset-collection", action="store_true")
+    parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--law-name", action="append", default=None)
+    parser.add_argument("--query", action="append", default=None)
+    parser.add_argument("--max-pages", type=int, default=1)
+    parser.add_argument("--display", type=int, default=20)
+    parser.add_argument("--max-chars", type=int, default=1200)
+    parser.add_argument("--limit-chunks", type=int, default=None)
+    parser.add_argument("--skip-laws", action="store_true")
+    parser.add_argument("--skip-interpretations", action="store_true")
+    parser.add_argument("--skip-tribunal", action="store_true")
     args = parser.parse_args()
 
-    asyncio.run(main(in_memory=args.in_memory, qdrant_url=args.qdrant_url))
+    asyncio.run(main(args))

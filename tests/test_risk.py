@@ -158,3 +158,14 @@ class TestRiskScoreEndpoint:
         assert "flags" in data
         assert "explanation" in data
         assert "indicators" in data
+
+    async def test_client_cannot_query_other_company(self, async_client) -> None:  # type: ignore[no-untyped-def]
+        from tax_copilot.auth.jwt import create_access_token
+
+        token = create_access_token(user_id=10, tenant_id=1, role="client", client_company_id=42)
+        resp = await async_client.get(
+            "/api/v1/risk/score",
+            params={"client_company_id": 99, "from_date": "2026-01-01", "to_date": "2026-03-31"},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 403
