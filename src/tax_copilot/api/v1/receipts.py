@@ -14,7 +14,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from tax_copilot.api.deps import CurrentUser, get_current_user, get_db
 from tax_copilot.audit.events import record_event
 from tax_copilot.auth.permissions import require_staff_or_admin
-from tax_copilot.core.exceptions import AuthorizationError, DuplicateReceiptError, ValidationError
+from tax_copilot.core.exceptions import (
+    AuthorizationError,
+    DuplicateReceiptError,
+    StorageError,
+    ValidationError,
+)
 from tax_copilot.core.receipts.validation import compute_file_hash, validate_receipt_file
 from tax_copilot.infra.cache.redis_lock import release_lock
 from tax_copilot.infra.database import AsyncSessionLocal
@@ -33,7 +38,7 @@ from tax_copilot.infra.db.models.receipt import (
 )
 from tax_copilot.infra.db.models.receipt_comment import ReceiptComment
 from tax_copilot.infra.db.models.user import ROLE_CLIENT
-from tax_copilot.infra.storage.local import save_receipt
+from tax_copilot.infra.storage.local import load_receipt, save_receipt
 from tax_copilot.schemas.comments import (
     CommentCreateRequest,
     CommentListResponse,
@@ -601,6 +606,37 @@ def _check_receipt_access(receipt: Receipt | None, current_user: CurrentUser) ->
         if receipt.client_company_id != current_user.client_company_id:
             raise ValidationError("영수증을 찾을 수 없습니다.")
     return receipt
+
+
+@router.get("/{receipt_id}/file")
+async def get_receipt_file(
+    receipt_id: int,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> Response:
+    """원본 영수증 파일(이미지/PDF)을 인라인으로 반환한다."""
+    result = await db.execute(
+        select(Receipt).where(
+            Receipt.id == receipt_id,
+            Receipt.tenant_id == current_user.tenant_id,
+        )
+    )
+    receipt = _check_receipt_access(result.scalar_one_or_none(), current_user)
+
+    try:
+        content = load_receipt(receipt.file_path)
+    except StorageError as exc:
+        raise ValidationError("영수증 파일을 찾을 수 없습니다.") from exc
+
+    return Response(
+        content=content,
+        media_type=receipt.mime_type or "application/octet-stream",
+        # 한글 파일명의 latin-1 헤더 인코딩 오류를 피하기 위해 filename 은 생략
+        headers={
+            "Content-Disposition": "inline",
+            "Cache-Control": "private, max-age=300",
+        },
+    )
 
 
 @router.get("/{receipt_id}/comments", response_model=CommentListResponse)

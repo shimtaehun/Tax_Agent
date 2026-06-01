@@ -1,4 +1,5 @@
 from datetime import date, datetime
+from typing import Any
 
 from sqlalchemy import JSON, ForeignKey, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
@@ -33,7 +34,7 @@ class Receipt(Base):
 
     # 추출된 거래 정보
     transaction_date: Mapped[date | None] = mapped_column(nullable=True)
-    parsed_data: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    parsed_data: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
 
     # 일괄 업로드 배치 식별자 (단건 업로드 시 NULL)
     batch_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
@@ -50,7 +51,7 @@ class Receipt(Base):
 
     # 중복 감지 결과
     duplicate_suspect: Mapped[bool] = mapped_column(default=False, server_default="false")
-    duplicate_receipt_ids: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    duplicate_receipt_ids: Mapped[list[int] | None] = mapped_column(JSON, nullable=True)
 
     # 세무사 검토
     reviewed_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)

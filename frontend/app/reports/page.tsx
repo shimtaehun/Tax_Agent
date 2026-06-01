@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import Sidebar from "../components/Sidebar";
+import StatCard from "../components/StatCard";
+import { DonutChart, BarList } from "../components/Charts";
 import {
   downloadMonthlyReportHtml,
   getMonthlyReport,
@@ -10,6 +12,8 @@ import {
 } from "../../lib/api";
 
 const money = (value: number) => `${value.toLocaleString("ko-KR")}원`;
+const compactWon = (value: number) =>
+  value >= 10000 ? `${Math.round(value / 10000).toLocaleString("ko-KR")}만` : value.toLocaleString("ko-KR");
 
 function currentMonth() {
   const now = new Date();
@@ -71,21 +75,48 @@ export default function ReportsPage() {
           </div>
         </header>
 
-        {error && <p style={{ color: "#dc2626", marginTop: 16 }}>{error}</p>}
+        {error && <p style={{ color: "var(--danger)", marginTop: 16 }}>{error}</p>}
         {loading ? (
-          <p style={{ marginTop: 24 }}>불러오는 중...</p>
+          <div className="loader">불러오는 중...</div>
         ) : report ? (
           <>
             <section className="summaryGrid">
-              <div className="metric"><span>처리된 영수증</span><strong>{report.processed_receipt_count.toLocaleString("ko-KR")}건</strong></div>
-              <div className="metric"><span>매입 세금계산서</span><strong>{report.purchase_invoice_count.toLocaleString("ko-KR")}건</strong></div>
-              <div className="metric"><span>매출 세금계산서</span><strong>{report.sales_invoice_count.toLocaleString("ko-KR")}건</strong></div>
-              <div className="metric"><span>매입세액 합계</span><strong>{money(report.total_input_vat_krw)}</strong></div>
-              <div className="metric"><span>매출세액</span><strong>{money(report.sales_invoice_vat_krw)}</strong></div>
-              <div className="metric"><span>예상 납부세액</span><strong>{money(report.estimated_vat_payable_krw)}</strong></div>
+              <StatCard icon="receipt" tone="neutral" label="처리된 영수증" value={`${report.processed_receipt_count.toLocaleString("ko-KR")}건`} />
+              <StatCard icon="fileIn" tone="info" label="매입 세금계산서" value={`${report.purchase_invoice_count.toLocaleString("ko-KR")}건`} />
+              <StatCard icon="fileOut" tone="success" label="매출 세금계산서" value={`${report.sales_invoice_count.toLocaleString("ko-KR")}건`} />
+              <StatCard icon="coins" tone="info" label="매입세액 합계" value={money(report.total_input_vat_krw)} />
+              <StatCard icon="trending" tone="success" label="매출세액" value={money(report.sales_invoice_vat_krw)} />
+              <StatCard icon="scale" tone="primary" hero label="예상 납부세액" value={money(report.estimated_vat_payable_krw)} />
             </section>
 
-            <section className="reportPanel">
+            <div className="section-head">정산 시각화</div>
+            <section className="chartGrid">
+              <div className="chartCard rise">
+                <h3>매입세액 구성</h3>
+                <DonutChart
+                  centerLabel="매입세액"
+                  centerValue={compactWon(report.total_input_vat_krw)}
+                  format={money}
+                  segments={[
+                    { label: "영수증 매입세액", value: report.receipt_input_vat_krw, color: "#4f46e5" },
+                    { label: "세금계산서 매입세액", value: report.purchase_invoice_vat_krw, color: "#38bdf8" },
+                  ]}
+                />
+              </div>
+              <div className="chartCard rise">
+                <h3>매출세액 · 매입세액 · 예상 납부세액</h3>
+                <BarList
+                  format={money}
+                  items={[
+                    { label: "매출세액", value: report.sales_invoice_vat_krw, color: "#059669" },
+                    { label: "매입세액(공제)", value: report.total_input_vat_krw, color: "#2563eb" },
+                    { label: "예상 납부세액", value: report.estimated_vat_payable_krw, color: "#4f46e5" },
+                  ]}
+                />
+              </div>
+            </section>
+
+            <section className="reportPanel rise">
               <h2>{report.month} 정산 요약</h2>
               <dl>
                 <div><dt>기간</dt><dd>{report.from_date} - {report.to_date}</dd></div>

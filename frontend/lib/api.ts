@@ -371,6 +371,25 @@ export async function downloadAuditCsv(receiptId: number): Promise<void> {
   URL.revokeObjectURL(url);
 }
 
+export interface ReceiptFile {
+  url: string; // object URL — 사용 후 revoke 필요
+  contentType: string;
+}
+
+/** 원본 영수증 파일을 인증 포함으로 받아 object URL 로 반환한다. */
+export async function fetchReceiptFile(receiptId: number): Promise<ReceiptFile> {
+  const res = await fetch(`${BASE}/api/v1/receipts/${receiptId}/file`, {
+    headers: authHeaders(),
+  });
+  handleUnauthorized(res.status);
+  if (!res.ok) throw new Error(await parseError(res, "영수증 파일을 불러오지 못했습니다"));
+  const blob = await res.blob();
+  return {
+    url: URL.createObjectURL(blob),
+    contentType: res.headers.get("Content-Type") ?? blob.type ?? "",
+  };
+}
+
 export async function uploadReceipt(
   file: File,
   clientCompanyId: number = 1

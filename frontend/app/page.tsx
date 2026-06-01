@@ -15,11 +15,13 @@ import {
   getReceipts,
   retryReceipt,
   cancelReceipt,
+  fetchReceiptFile,
   ReviewItem,
   ExplanationResponse,
   CitationItem,
   CommentItem,
   ReceiptStatus,
+  ReceiptFile,
 } from "../lib/api";
 
 const STATUS_LABEL: Record<string, string> = {
@@ -32,8 +34,8 @@ const STATUS_LABEL: Record<string, string> = {
 };
 
 const STATUS_COLOR: Record<string, string> = {
-  PENDING: "#94a3b8",
-  PROCESSING: "#3b82f6",
+  PENDING: "var(--faint)",
+  PROCESSING: "var(--info)",
 };
 
 const WORKFLOW_STAGES = [
@@ -58,6 +60,8 @@ export default function Home() {
   const [comments, setComments] = useState<CommentItem[]>([]);
   const [newComment, setNewComment] = useState("");
   const [detailError, setDetailError] = useState("");
+  const [filePreview, setFilePreview] = useState<ReceiptFile | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const pollingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const selectedRef = useRef<ReviewItem | null>(null);
@@ -73,8 +77,17 @@ export default function Home() {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    if (!selected) { setDetail(null); setComments([]); return; }
+    if (!selected) { setDetail(null); setComments([]); setFilePreview(null); return; }
     loadDetail(selected.receipt_id);
+
+    let objUrl: string | null = null;
+    setFilePreview(null);
+    setPreviewLoading(true);
+    fetchReceiptFile(selected.receipt_id)
+      .then((f) => { objUrl = f.url; setFilePreview(f); })
+      .catch(() => setFilePreview(null))
+      .finally(() => setPreviewLoading(false));
+    return () => { if (objUrl) URL.revokeObjectURL(objUrl); };
   }, [selected]);
 
   async function fetchReviews() {
@@ -336,40 +349,54 @@ export default function Home() {
         ) : selected ? (
           <section className="reviewPanel rise">
             <div className="receiptPreview">
-              <div className="paper">
-                <span style={{ color: "var(--muted)", fontSize: 13 }}>영수증 #{selected.receipt_id}</span>
-                <strong style={{ fontSize: 18 }}>{selected.original_filename}</strong>
-                <small>
-                  업로드:{" "}
-                  {new Date(selected.created_at).toLocaleDateString("ko-KR", {
-                    year: "numeric", month: "long", day: "numeric",
-                    hour: "2-digit", minute: "2-digit",
-                  })}
-                </small>
-                <div style={{ marginTop: 8 }}>
-                  <span className="badge badge-warn">검토 필요</span>
+              <div className="previewHead">
+                <div style={{ minWidth: 0 }}>
+                  <span className="previewKicker">영수증 #{selected.receipt_id}</span>
+                  <strong className="previewName">{selected.original_filename}</strong>
                 </div>
-                <small style={{ color: "var(--muted)" }}>
-                  AI가 처리를 완료했습니다. 세무사 검토가 필요합니다.
-                </small>
+                <span className="badge badge-warn">검토 필요</span>
               </div>
+
+              <div className="paper">
+                {filePreview ? (
+                  filePreview.contentType.includes("pdf") ? (
+                    <embed className="previewDoc" src={filePreview.url} type="application/pdf" />
+                  ) : (
+                    <img className="previewImg" src={filePreview.url} alt={`영수증 ${selected.receipt_id}`} />
+                  )
+                ) : previewLoading ? (
+                  <div className="previewEmpty">
+                    <div className="loader">영수증 불러오는 중…</div>
+                  </div>
+                ) : (
+                  <div className="previewEmpty">
+                    <div className="empty-ic" aria-hidden>
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                        <path d="M14 2v6h6" />
+                      </svg>
+                    </div>
+                    미리보기를 표시할 수 없습니다.
+                  </div>
+                )}
+              </div>
+
+              <small className="previewFoot">
+                업로드:{" "}
+                {new Date(selected.created_at).toLocaleDateString("ko-KR", {
+                  year: "numeric", month: "long", day: "numeric",
+                  hour: "2-digit", minute: "2-digit",
+                })}
+              </small>
             </div>
 
             <div className="decision">
-              <h2>세무사 검토</h2>
-              <dl>
-                <div><dt>영수증 ID</dt><dd>#{selected.receipt_id}</dd></div>
-                <div><dt>파일명</dt><dd>{selected.original_filename}</dd></div>
-                <div><dt>상태</dt><dd>{STATUS_LABEL["NEEDS_REVIEW"]}</dd></div>
-                <div>
-                  <dt>워크플로우 ID</dt>
-                  <dd style={{ fontSize: 12, wordBreak: "break-all", color: "var(--muted)" }}>
-                    {selected.langgraph_thread_id}
-                  </dd>
-                </div>
-              </dl>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 18 }}>
+                <h2>세무사 검토</h2>
+                <span className="badge badge-warn">{STATUS_LABEL["NEEDS_REVIEW"]}</span>
+              </div>
 
-              {detailError && <p style={{ color: "#dc2626", fontSize: 13 }}>{detailError}</p>}
+              {detailError && <p style={{ color: "var(--danger)", fontSize: 13 }}>{detailError}</p>}
 
               {detail?.decision && (
                 <div className="detailBox">
@@ -416,11 +443,7 @@ export default function Home() {
                 <h3 style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   법령 검색 결과
                   {detail && (
-                    <span style={{
-                      fontSize: 11, fontWeight: 600, padding: "2px 8px",
-                      borderRadius: 10, background: detail.citations.length > 0 ? "#dcfce7" : "#f1f5f9",
-                      color: detail.citations.length > 0 ? "#16a34a" : "#94a3b8",
-                    }}>
+                    <span className={`badge ${detail.citations.length > 0 ? "badge-success" : "badge-muted"}`}>
                       {detail.citations.length > 0 ? `${detail.citations.length}개 인용` : "검색 안 됨"}
                     </span>
                   )}
@@ -450,7 +473,7 @@ export default function Home() {
                             {c.effective_from} 시행
                           </span>
                         </div>
-                        <p style={{ margin: 0, color: "#374151", lineHeight: 1.6 }}>
+                        <p style={{ margin: 0, color: "var(--ink-soft)", lineHeight: 1.6 }}>
                           {c.quoted_text}
                         </p>
                       </div>

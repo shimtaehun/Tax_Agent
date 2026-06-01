@@ -2,6 +2,7 @@
 
 import { ChangeEvent, useEffect, useRef, useState } from "react";
 import Sidebar from "../components/Sidebar";
+import StatCard from "../components/StatCard";
 import {
   deleteTaxInvoice,
   getTaxInvoices,
@@ -21,6 +22,7 @@ const money = (value: number) => `${value.toLocaleString("ko-KR")}원`;
 export default function TaxInvoicesPage() {
   const [items, setItems] = useState<TaxInvoiceItem[]>([]);
   const [direction, setDirection] = useState<"SALE" | "PURCHASE">("PURCHASE");
+  const [filter, setFilter] = useState<"ALL" | "PURCHASE" | "SALE">("ALL");
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [message, setMessage] = useState("");
@@ -187,20 +189,31 @@ export default function TaxInvoicesPage() {
         </header>
 
         {message && <p style={{ color: "var(--success)", marginTop: 16 }}>{message}</p>}
-        {error && <p style={{ color: "#dc2626", marginTop: 16 }}>{error}</p>}
+        {error && <p style={{ color: "var(--danger)", marginTop: 16 }}>{error}</p>}
 
         <section className="summaryGrid">
-          <div className="metric"><span>전체</span><strong>{items.length.toLocaleString("ko-KR")}건</strong></div>
-          <div className="metric"><span>매입세액</span><strong>{money(items.filter((i) => i.direction === "PURCHASE").reduce((sum, i) => sum + i.vat_krw, 0))}</strong></div>
-          <div className="metric"><span>매출세액</span><strong>{money(items.filter((i) => i.direction === "SALE").reduce((sum, i) => sum + i.vat_krw, 0))}</strong></div>
+          <StatCard icon="receipt" tone="primary" hero label="전체 세금계산서" value={`${items.length.toLocaleString("ko-KR")}건`} />
+          <StatCard icon="fileIn" tone="info" label="매입세액" value={money(items.filter((i) => i.direction === "PURCHASE").reduce((sum, i) => sum + i.vat_krw, 0))} />
+          <StatCard icon="fileOut" tone="success" label="매출세액" value={money(items.filter((i) => i.direction === "SALE").reduce((sum, i) => sum + i.vat_krw, 0))} />
         </section>
 
         {loading ? (
-          <p>불러오는 중...</p>
+          <div className="loader">불러오는 중...</div>
         ) : items.length === 0 ? (
           <div className="emptyState">가져온 세금계산서가 없습니다.</div>
         ) : (
-          <table className="dataTable">
+          <>
+            <div className="tableHead">
+              <div className="segmented">
+                <button className={filter === "ALL" ? "on" : ""} onClick={() => setFilter("ALL")}>전체</button>
+                <button className={filter === "PURCHASE" ? "on" : ""} onClick={() => setFilter("PURCHASE")}>매입</button>
+                <button className={filter === "SALE" ? "on" : ""} onClick={() => setFilter("SALE")}>매출</button>
+              </div>
+              <span style={{ fontSize: 13, color: "var(--muted)", fontWeight: 600 }}>
+                {(filter === "ALL" ? items : items.filter((i) => i.direction === filter)).length.toLocaleString("ko-KR")}건
+              </span>
+            </div>
+            <table className="dataTable">
             <thead>
               <tr>
                 {["구분", "작성일자", "승인번호", "거래처", "품목", "공급가액", "세액", "합계"].map((h) => (
@@ -209,7 +222,7 @@ export default function TaxInvoicesPage() {
               </tr>
             </thead>
             <tbody>
-              {items.map((item) => (
+              {(filter === "ALL" ? items : items.filter((i) => i.direction === filter)).map((item) => (
                 <tr key={item.id} onClick={() => openDetail(item)} style={{ cursor: "pointer" }}>
                   <td>
                     <span className={`badge ${item.direction === "SALE" ? "badge-success" : "badge-info"}`}>
@@ -226,7 +239,8 @@ export default function TaxInvoicesPage() {
                 </tr>
               ))}
             </tbody>
-          </table>
+            </table>
+          </>
         )}
       </section>
 
@@ -243,7 +257,7 @@ export default function TaxInvoicesPage() {
               <button className="secondary" onClick={closeDetail}>닫기</button>
             </div>
 
-            {actionError && <p style={{ color: "#dc2626", marginBottom: 12 }}>{actionError}</p>}
+            {actionError && <p style={{ color: "var(--danger)", marginBottom: 12 }}>{actionError}</p>}
 
             <div className="formGrid">
               <label>

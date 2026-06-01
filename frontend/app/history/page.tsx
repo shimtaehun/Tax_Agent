@@ -121,9 +121,9 @@ export default function HistoryPage() {
         </header>
 
         {loading ? (
-          <p style={{ color: "var(--muted)" }}>불러오는 중...</p>
+          <div className="loader">불러오는 중...</div>
         ) : error ? (
-          <p style={{ color: "#dc2626" }}>{error}</p>
+          <p style={{ color: "var(--danger)" }}>{error}</p>
         ) : items.length === 0 ? (
           <div className="emptyState">처리 완료된 영수증이 없습니다.</div>
         ) : (
@@ -234,7 +234,7 @@ export default function HistoryPage() {
               </div>
             )}
 
-            {actionError && <p style={{ color: "#dc2626", fontSize: 13, marginBottom: 12 }}>{actionError}</p>}
+            {actionError && <p style={{ color: "var(--danger)", fontSize: 13, marginBottom: 12 }}>{actionError}</p>}
 
             {/* 액션 버튼 */}
             {deleteConfirm ? (

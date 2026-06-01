@@ -1,3 +1,5 @@
+@import url("https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css");
+
 /* ============================================================
    Tax-Copilot — Design System "Modern Fintech Trust"
    기능 변경 없음. 시각 시스템만 재정의.
@@ -1400,4 +1402,165 @@ button:hover {
   height: 16px;
   border-radius: 2px;
   background: linear-gradient(180deg, var(--primary), #818cf8);
+}
+
+/* --- Charts --- */
+.chartGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
+  gap: 16px;
+  margin: 12px 0 24px;
+}
+
+.chartCard {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  padding: 22px;
+  box-shadow: var(--shadow-sm);
+}
+
+.chartCard h3 {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ink);
+  margin: 0 0 18px;
+}
+
+.legend {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 13px;
+}
+.legend-dot {
+  width: 11px;
+  height: 11px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+.legend-label { color: var(--muted); font-weight: 600; }
+.legend-val {
+  margin-left: auto;
+  font-weight: 700;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.barList { display: grid; gap: 18px; }
+.barRow { display: grid; gap: 8px; }
+.barHead { display: flex; align-items: baseline; justify-content: space-between; }
+.barLabel { font-size: 13px; font-weight: 600; color: var(--muted); }
+.barVal { font-size: 15px; font-weight: 800; color: var(--ink); font-variant-numeric: tabular-nums; }
+.barTrack {
+  height: 12px;
+  border-radius: var(--r-pill);
+  background: var(--bg-soft);
+  overflow: hidden;
+}
+.barFill {
+  height: 100%;
+  border-radius: var(--r-pill);
+  transform-origin: left;
+}
+
+@media (max-width: 980px) {
+  .chartGrid { grid-template-columns: 1fr; }
+}
+
+/* --- Receipt preview --- */
+.previewHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.previewKicker {
+  display: block;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--faint);
+  margin-bottom: 2px;
+}
+.previewName {
+  font-size: 16px;
+  font-weight: 750;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+.previewImg {
+  width: 100%;
+  height: auto;
+  display: block;
+  border-radius: 8px;
+  box-shadow: var(--shadow-sm);
+}
+.previewDoc {
+  width: 100%;
+  height: 460px;
+  border: 0;
+  border-radius: 8px;
+  background: #fff;
+}
+.previewEmpty {
+  min-height: 280px;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 10px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 14px;
+}
+.previewFoot {
+  display: block;
+  margin-top: 12px;
+  color: var(--muted);
+}
+
+/* --- Segmented control --- */
+.segmented {
+  display: inline-flex;
+  background: var(--bg-soft);
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  padding: 3px;
+  gap: 2px;
+}
+.segmented button {
+  background: transparent;
+  color: var(--muted);
+  border: 0;
+  box-shadow: none;
+  padding: 7px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 650;
+}
+.segmented button:hover {
+  background: transparent;
+  color: var(--ink);
+  box-shadow: none;
+}
+.segmented button.on {
+  background: var(--panel);
+  color: var(--primary-press);
+  box-shadow: var(--shadow-xs);
+}
+.segmented button.on:hover {
+  background: var(--panel);
+}
+
+.tableHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 22px 0 10px;
 }
