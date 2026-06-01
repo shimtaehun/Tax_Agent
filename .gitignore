@@ -16,3 +16,4 @@ uploads/
 .DS_Store
 frontend/node_modules/
 frontend/.next/
+frontend/tsconfig.tsbuildinfo
