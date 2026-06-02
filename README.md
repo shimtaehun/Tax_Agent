@@ -41,6 +41,7 @@
 - [✨ 주요 기능](#-주요-기능)
 - [🧱 아키텍처](#-아키텍처)
 - [🛠 기술 스택](#-기술-스택)
+- [🗄 데이터베이스 구조](#-데이터베이스-구조)
 - [🔀 LangGraph 워크플로우](#-langgraph-워크플로우-6노드)
 - [💡 만들면서 한 선택들](#-만들면서-한-선택들)
 - [🚀 로컬 개발 환경 설정](#-로컬-개발-환경-설정)
@@ -121,6 +122,98 @@ api/ workers/ agents/   사용 계층
 | Frontend | Next.js 15 (App Router), TypeScript |
 | 테스트 | pytest-asyncio, fakeredis, unittest.mock |
 | DB | PostgreSQL 16 |
+
+<br/>
+
+---
+
+## 🗄 데이터베이스 구조
+
+PostgreSQL 16 기반의 **멀티테넌트** 구조입니다. 최상위 `tenants`(세무사 사무소) 아래에 `client_companies`(고객사)와 `users`가 속하고, 영수증·세금계산서·신고 기한이 고객사 단위로 관리됩니다. 거의 모든 테이블이 `tenant_id`를 가져 사무소 간 데이터가 격리됩니다.
+
+```mermaid
+erDiagram
+    tenants ||--o{ client_companies : "고객사 보유"
+    tenants ||--o{ users : "직원/고객 소속"
+    client_companies ||--o{ users : "client 계정 소속"
+    client_companies ||--o{ receipts : "영수증"
+    client_companies ||--o{ tax_invoices : "세금계산서"
+    client_companies ||--o{ filing_deadlines : "신고 기한"
+    users ||--o{ receipts : "업로드/검토"
+    receipts ||--o{ receipt_comments : "코멘트"
+    users ||--o{ receipt_comments : "작성"
+    receipts ||--o{ audit_events : "상태 이력"
+
+    tenants {
+        int id PK
+        varchar name
+        boolean is_active
+    }
+    client_companies {
+        int id PK
+        int tenant_id FK
+        varchar name
+        varchar business_no "사업자번호 마스킹 대상"
+    }
+    users {
+        int id PK
+        int tenant_id FK
+        int client_company_id FK "client 전용"
+        varchar email
+        varchar hashed_password
+        varchar role "client/staff/admin"
+    }
+    receipts {
+        int id PK
+        int tenant_id FK
+        int client_company_id FK
+        int uploaded_by FK
+        int reviewed_by FK "검토 세무사"
+        varchar file_hash "tenant 내 UNIQUE"
+        date transaction_date
+        json parsed_data
+        varchar status "PENDING~APPROVED"
+        varchar account_code
+        boolean duplicate_suspect
+    }
+    receipt_comments {
+        int id PK
+        int receipt_id FK
+        int author_id FK
+        text body
+    }
+    tax_invoices {
+        int id PK
+        int tenant_id FK
+        int client_company_id FK
+        int uploaded_by FK
+        varchar direction "SALE/PURCHASE"
+        varchar approval_no
+        date issue_date
+        int supply_value_krw
+        int vat_krw
+    }
+    filing_deadlines {
+        int id PK
+        int tenant_id FK
+        int client_company_id FK
+        varchar tax_type
+        int fiscal_year
+        date due_date
+        varchar status "pending/completed/overdue"
+    }
+    audit_events {
+        int id PK
+        int tenant_id FK
+        int actor_user_id FK
+        int receipt_id FK
+        varchar event_type
+        json payload
+    }
+```
+
+> [!NOTE]
+> `audit_events`는 모든 상태 전이와 AI 판단 이력을 남기는 **삭제 금지** 테이블입니다. `receipts`는 `(tenant_id, file_hash)` 복합 UNIQUE로 동일 파일 중복 처리를 막습니다.
 
 <br/>
 
