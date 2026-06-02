@@ -1,29 +1,59 @@
-# Tax-Copilot — 세무사를 위한 AI 영수증 검토 시스템
+<div align="center">
 
-반복 업무는 자동화하고, 최종 판단은 세무사가 합니다. 영수증을 올리면 AI가 파싱·법령 검색·세무 판단까지 후보를 만들어 오고, 세무사는 그 결과를 승인하거나 반려합니다.
+<br/>
 
-<p align="center">
-  <img src="https://img.shields.io/badge/Python-3.11-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python" />
-  <img src="https://img.shields.io/badge/FastAPI-009688?style=flat-square&logo=fastapi&logoColor=white" alt="FastAPI" />
-  <img src="https://img.shields.io/badge/LangGraph-1C3C3C?style=flat-square&logo=langchain&logoColor=white" alt="LangGraph" />
-  <img src="https://img.shields.io/badge/Gemini-4285F4?style=flat-square&logo=google&logoColor=white" alt="Gemini" />
-  <img src="https://img.shields.io/badge/Qdrant-DC244C?style=flat-square&logo=qdrant&logoColor=white" alt="Qdrant" />
-  <img src="https://img.shields.io/badge/Celery-37814A?style=flat-square&logo=celery&logoColor=white" alt="Celery" />
-  <img src="https://img.shields.io/badge/PostgreSQL-4169E1?style=flat-square&logo=postgresql&logoColor=white" alt="PostgreSQL" />
-  <img src="https://img.shields.io/badge/Next.js-000000?style=flat-square&logo=nextdotjs&logoColor=white" alt="Next.js" />
-</p>
+# 🧾 Tax-Copilot
 
-<p align="center">
-  <b>1인 개발</b> · 백엔드 · AI 파이프라인 · 프론트엔드 · 테스트 166개 · 2026.05 ~
-</p>
+### 세무사를 위한 AI 영수증 검토 시스템
 
-> 본 시스템은 세무사의 업무를 보조하는 도구이며, 모든 세무 판단의 최종 책임은
-> 사용 세무사에게 있습니다. AI가 제공하는 분석 결과는 참고용 후보이며,
-> 세무신고 및 세무대리는 세무사법에 따라 세무사 자격이 있는 자만이 수행할 수 있습니다.
+반복 업무는 자동화하고, 최종 판단은 세무사가 합니다.
+영수증을 올리면 AI가 파싱·법령 검색·세무 판단까지 후보를 만들어 오고,
+세무사는 그 결과를 승인하거나 반려합니다.
+
+<br/>
+
+![Python](https://img.shields.io/badge/Python-3.11-3776AB?style=flat-square&logo=python&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=flat-square&logo=fastapi&logoColor=white)
+![LangGraph](https://img.shields.io/badge/LangGraph-1C3C3C?style=flat-square&logo=langchain&logoColor=white)
+![Gemini](https://img.shields.io/badge/Gemini-4285F4?style=flat-square&logo=google&logoColor=white)
+![Qdrant](https://img.shields.io/badge/Qdrant-DC244C?style=flat-square&logo=qdrant&logoColor=white)
+![Celery](https://img.shields.io/badge/Celery-37814A?style=flat-square&logo=celery&logoColor=white)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?style=flat-square&logo=postgresql&logoColor=white)
+![Next.js](https://img.shields.io/badge/Next.js-000000?style=flat-square&logo=nextdotjs&logoColor=white)
+
+<br/>
+
+`1인 개발`  ·  백엔드 · AI 파이프라인 · 프론트엔드  ·  테스트 166개  ·  2026.05 ~
+
+</div>
+
+<br/>
+
+> [!IMPORTANT]
+> 본 시스템은 세무사의 업무를 보조하는 도구이며, 모든 세무 판단의 최종 책임은 사용 세무사에게 있습니다. AI가 제공하는 분석 결과는 참고용 후보이며, 세무신고 및 세무대리는 세무사법에 따라 세무사 자격이 있는 자만이 수행할 수 있습니다.
+
+<br/>
 
 ---
 
-## 주요 기능
+## 📑 목차
+
+- [✨ 주요 기능](#-주요-기능)
+- [🏗️ 아키텍처](#️-아키텍처)
+- [🛠 기술 스택](#-기술-스택)
+- [🔀 LangGraph 워크플로우](#-langgraph-워크플로우-6노드)
+- [💡 만들면서 한 선택들](#-만들면서-한-선택들)
+- [🚀 로컬 개발 환경 설정](#-로컬-개발-환경-설정)
+- [🧪 테스트](#-테스트)
+- [🔌 API 엔드포인트](#-api-엔드포인트)
+- [📦 배포 (Render)](#-배포-render)
+- [🗂 Phase별 구현 내용](#-phase별-구현-내용)
+
+<br/>
+
+---
+
+## ✨ 주요 기능
 
 - **영수증 이미지 파싱**: Gemini Vision으로 상호명, 금액, 날짜, 증빙 종류를 자동 추출
 - **법령 검색 (RAG)**: 거래일 기준으로 유효한 부가가치세법 / 법인세법 조항을 벡터 검색
@@ -37,9 +67,11 @@
 - **월간 정산 리포트**: 영수증·세금계산서 지표를 인쇄용 HTML(PDF 저장)로 출력
 - **고객사 포털**: client 역할 전용 대시보드 (영수증 상태 집계)
 
+<br/>
+
 ---
 
-## 아키텍처
+## 🏗️ 아키텍처
 
 ```
 [Next.js UI]
@@ -72,9 +104,11 @@ api/ workers/ agents/   사용 계층
       core/             순수 도메인 (pydantic + 표준 라이브러리만)
 ```
 
+<br/>
+
 ---
 
-## 기술 스택
+## 🛠 기술 스택
 
 | 영역 | 기술 |
 |------|------|
@@ -88,9 +122,11 @@ api/ workers/ agents/   사용 계층
 | 테스트 | pytest-asyncio, fakeredis, unittest.mock |
 | DB | PostgreSQL 16 |
 
+<br/>
+
 ---
 
-## LangGraph 워크플로우 (6노드)
+## 🔀 LangGraph 워크플로우 (6노드)
 
 ```
 image_quality_node
@@ -104,11 +140,14 @@ image_quality_node
                                                                            └─ resume → save_result_node → END
 ```
 
-**Graceful Degradation**: Gemini API 장애 → `confidence=0.0` fallback → `requires_human=True` → 세무사 판단
+> [!NOTE]
+> **Graceful Degradation**: Gemini API 장애 → `confidence=0.0` fallback → `requires_human=True` → 세무사 판단
+
+<br/>
 
 ---
 
-## 만들면서 한 선택들
+## 💡 만들면서 한 선택들
 
 ### AI가 "최종 판단"을 하지 않게 설계했다
 
@@ -130,9 +169,11 @@ image_quality_node
 
 `core/`(순수 도메인)는 Gemini·Qdrant·Redis 같은 외부 시스템을 전혀 모르고, 바깥 계층만 안쪽을 의존하도록 방향을 고정했습니다. 덕분에 외부 API 없이도 도메인 로직을 단위 테스트할 수 있었고, AI 장애 상황(Graceful Degradation)도 어댑터 계층에서만 처리하면 돼서 전체가 단순해졌습니다. 현재 테스트 166개 중 상당수가 외부 의존 없이 빠르게 도는 것도 이 구조 덕분입니다.
 
+<br/>
+
 ---
 
-## 로컬 개발 환경 설정
+## 🚀 로컬 개발 환경 설정
 
 ### 사전 요구사항
 
@@ -186,9 +227,11 @@ QDRANT_URL=http://localhost:6333
 FRONTEND_URL=http://localhost:3000
 ```
 
+<br/>
+
 ---
 
-## 테스트
+## 🧪 테스트
 
 ```bash
 # 전체 테스트 (166개)
@@ -217,9 +260,11 @@ PYTHONPATH=src pytest tests/test_rag.py -v
 | test_tax_invoices.py | 5 | 세금계산서 import·수정·삭제 |
 | 그 외 | 28 | explanation, batch, comments, sse, portal, law_open_data 등 |
 
+<br/>
+
 ---
 
-## API 엔드포인트
+## 🔌 API 엔드포인트
 
 | Method | Path | 설명 |
 |--------|------|------|
@@ -237,11 +282,13 @@ PYTHONPATH=src pytest tests/test_rag.py -v
 | GET | /api/v1/portal/dashboard | 고객사 대시보드 (client 전용) |
 | GET | /healthz | 헬스체크 |
 
+<br/>
+
 ---
 
-## 배포 (Render)
+## 📦 배포 (Render)
 
-`render.yaml`에 API 서버와 Celery Worker 두 서비스가 정의되어 있다.
+`render.yaml`에 API 서버와 Celery Worker 두 서비스가 정의되어 있습니다.
 
 필요한 환경 변수:
 - `DATABASE_URL` — PostgreSQL 연결 문자열
@@ -250,9 +297,11 @@ PYTHONPATH=src pytest tests/test_rag.py -v
 - `QDRANT_URL` — Qdrant 클라우드 또는 자체 호스팅 URL
 - `FRONTEND_URL` — Next.js 배포 URL (CORS 허용)
 
+<br/>
+
 ---
 
-## Phase별 구현 내용
+## 🗂 Phase별 구현 내용
 
 | Phase | 내용 |
 |-------|------|
@@ -265,9 +314,17 @@ PYTHONPATH=src pytest tests/test_rag.py -v
 | 6 | Next.js UI, CORS, render.yaml, README |
 | 7+ | 세금계산서 관리, 부가세 집계, 리스크 스코어링, 신고 기한, 월간 리포트, 고객 포털 |
 
+<br/>
+
+> [!TIP]
+> 각 Phase별 상세 학습 노트가 `docs/LEARNING_NOTES/`에 있습니다. 면접 질문 목록과 설계 결정 이유가 포함되어 있습니다.
+
+<br/>
+
 ---
 
-## 학습 노트
+<div align="center">
 
-각 Phase별 상세 학습 노트가 `docs/LEARNING_NOTES/`에 있습니다.
-면접 질문 목록과 설계 결정 이유가 포함되어 있습니다.
+**Tax-Copilot** · 1인 개발 · 세무사를 위한 AI 영수증 검토 시스템
+
+</div>
