@@ -86,18 +86,39 @@ export const STAT_ICONS = {
 
 export type StatIconKey = keyof typeof STAT_ICONS;
 
+export type StatDelta = {
+  dir: "up" | "down";
+  value: string;
+  note?: string;
+};
+
+const DELTA_ARROW = {
+  up: (
+    <svg viewBox="0 0 24 24" {...S} aria-hidden>
+      <path d="m6 15 6-6 6 6" />
+    </svg>
+  ),
+  down: (
+    <svg viewBox="0 0 24 24" {...S} aria-hidden>
+      <path d="m6 9 6 6 6-6" />
+    </svg>
+  ),
+};
+
 export default function StatCard({
   label,
   value,
   icon,
   tone = "primary",
   hero = false,
+  delta,
 }: {
   label: string;
   value: ReactNode;
   icon: StatIconKey;
   tone?: Tone;
   hero?: boolean;
+  delta?: StatDelta;
 }) {
   return (
     <div className={`statCard rise tone-${tone}${hero ? " hero" : ""}`}>
@@ -105,6 +126,13 @@ export default function StatCard({
       <div>
         <div className="v">{value}</div>
         <div className="l">{label}</div>
+        {delta && (
+          <div className={`delta delta-${delta.dir}`}>
+            {DELTA_ARROW[delta.dir]}
+            {delta.value}
+            {delta.note && <small>{delta.note}</small>}
+          </div>
+        )}
       </div>
     </div>
   );

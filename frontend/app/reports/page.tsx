@@ -117,6 +117,32 @@ export default function ReportsPage() {
               </div>
             </section>
 
+            <section className="darkCard rise">
+              <div className="darkHead">
+                <span className="brand-mark" aria-hidden>
+                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 3v3M12 18v3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M3 12h3M18 12h3" />
+                    <circle cx="12" cy="12" r="3.2" />
+                  </svg>
+                </span>
+                <h3>AI 리포트 요약</h3>
+              </div>
+              <ul>
+                <li>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="#34d399" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg>
+                  <span>{report.month} 예상 납부세액은 <strong>{money(report.estimated_vat_payable_krw)}</strong>입니다. 매출세액 {money(report.sales_invoice_vat_krw)}에서 매입세액 {money(report.total_input_vat_krw)}을 공제한 값입니다.</span>
+                </li>
+                <li>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="#fbbf24" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M10.3 3.7 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.7a2 2 0 0 0-3.4 0Z" /><path d="M12 9v4M12 17h.01" /></svg>
+                  <span>검토 대기 영수증이 <strong>{report.pending_receipt_count.toLocaleString("ko-KR")}건</strong> 남아 있습니다. 신고 전에 처리하면 매입세액 공제가 정확해집니다.</span>
+                </li>
+                <li>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="#818cf8" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" /><path d="M16 2v4M8 2v4M3 10h18" /></svg>
+                  <span>{report.next_deadline ? <>다음 신고 기한은 <strong>{report.next_deadline.due_date}</strong> ({report.next_deadline.description})입니다.</> : "예정된 신고 기한이 없습니다."}</span>
+                </li>
+              </ul>
+            </section>
+
             <section className="reportPanel rise">
               <h2>{report.month} 정산 요약</h2>
               <dl>
