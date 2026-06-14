@@ -9,7 +9,7 @@ idempotency 보장 전략:
 import asyncio
 import logging
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 
 from tax_copilot.agents.graph import build_graph, generate_thread_id
 from tax_copilot.agents.state import AgentState
@@ -17,6 +17,7 @@ from tax_copilot.core.config import settings
 from tax_copilot.core.exceptions import DuplicateReceiptError
 from tax_copilot.infra.cache.redis_lock import acquire_lock, release_lock
 from tax_copilot.infra.database import AsyncSessionLocal, engine
+from tax_copilot.infra.db.models.account_rule import MATCH_TYPE_EXACT, AccountRule
 from tax_copilot.infra.db.models.receipt import (
     STATUS_APPROVED,
     STATUS_FAILED,
@@ -181,6 +182,7 @@ async def _run_workflow(
             if final_decision:
                 receipt.parsed_data = final_decision
                 receipt.account_code = final_decision.get("account_code")
+                await _apply_learned_rules(db, receipt, final_decision)
                 tx_date = final_state.get("transaction_date")
                 if tx_date is not None:
                     receipt.transaction_date = tx_date
@@ -188,6 +190,7 @@ async def _run_workflow(
             receipt.status = STATUS_APPROVED
             receipt.parsed_data = final_decision
             receipt.account_code = final_decision.get("account_code")
+            await _apply_learned_rules(db, receipt, final_decision)
             tx_date = final_state.get("transaction_date")
             if tx_date is not None:
                 receipt.transaction_date = tx_date
@@ -198,6 +201,54 @@ async def _run_workflow(
         await db.commit()
 
     return {"status": receipt.status, "receipt_id": receipt_id}
+
+
+def _extract_merchant(final_decision: dict) -> str | None:
+    calc = final_decision.get("calculation_result") or {}
+    return final_decision.get("merchant_name") or calc.get("merchant_name")
+
+
+async def _apply_learned_rules(db, receipt, final_decision: dict) -> None:
+    """학습된 거래처 규칙이 있으면 계정과목을 덮어쓴다 (키워드 분류보다 우선).
+
+    완전일치(exact) 규칙을 부분포함(contains)보다 먼저 평가하고, 적용된
+    규칙의 hit_count를 1 증가시켜 효용을 추적한다.
+    """
+    merchant = _extract_merchant(final_decision)
+    if not merchant:
+        return
+
+    result = await db.execute(
+        select(AccountRule)
+        .where(
+            AccountRule.tenant_id == receipt.tenant_id,
+            or_(
+                AccountRule.client_company_id == receipt.client_company_id,
+                AccountRule.client_company_id.is_(None),
+            ),
+        )
+        .order_by(AccountRule.client_company_id.is_(None), AccountRule.id)
+    )
+    rules = result.scalars().all()
+    name_lower = merchant.lower()
+
+    matched = next(
+        (r for r in rules if r.match_type == MATCH_TYPE_EXACT and r.pattern.lower() == name_lower),
+        None,
+    ) or next(
+        (r for r in rules if r.match_type != MATCH_TYPE_EXACT and r.pattern.lower() in name_lower),
+        None,
+    )
+    if matched is None:
+        return
+
+    label = "완전일치" if matched.match_type == MATCH_TYPE_EXACT else "포함"
+    receipt.account_code = matched.account_code
+    parsed = dict(final_decision)
+    parsed["account_code"] = matched.account_code
+    parsed["account_code_reason"] = f"학습 규칙({label}) '{matched.pattern}'"
+    receipt.parsed_data = parsed
+    matched.hit_count += 1
 
 
 def dispatch_receipt_task(
