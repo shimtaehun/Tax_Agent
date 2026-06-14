@@ -2,6 +2,7 @@ from fastapi import APIRouter
 
 from tax_copilot.api.v1.account_rules import router as account_rules_router
 from tax_copilot.api.v1.auth import router as auth_router
+from tax_copilot.api.v1.bank import router as bank_router
 from tax_copilot.api.v1.deadlines import router as deadlines_router
 from tax_copilot.api.v1.journal import router as journal_router
 from tax_copilot.api.v1.monthly_reports import router as monthly_reports_router
@@ -25,4 +26,5 @@ v1_router.include_router(deadlines_router)
 v1_router.include_router(journal_router)
 v1_router.include_router(tax_invoices_router)
 v1_router.include_router(statements_router)
+v1_router.include_router(bank_router)
 v1_router.include_router(monthly_reports_router)
