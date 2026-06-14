@@ -6,6 +6,7 @@ from tax_copilot.api.v1.bank import router as bank_router
 from tax_copilot.api.v1.deadlines import router as deadlines_router
 from tax_copilot.api.v1.journal import router as journal_router
 from tax_copilot.api.v1.missing_evidence import router as missing_evidence_router
+from tax_copilot.api.v1.monthly_closings import router as monthly_closings_router
 from tax_copilot.api.v1.monthly_reports import router as monthly_reports_router
 from tax_copilot.api.v1.portal import router as portal_router
 from tax_copilot.api.v1.receipts import router as receipts_router
@@ -29,4 +30,5 @@ v1_router.include_router(tax_invoices_router)
 v1_router.include_router(statements_router)
 v1_router.include_router(bank_router)
 v1_router.include_router(missing_evidence_router)
+v1_router.include_router(monthly_closings_router)
 v1_router.include_router(monthly_reports_router)

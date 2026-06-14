@@ -4,6 +4,7 @@ from tax_copilot.infra.db.models.bank_transaction import BankTransaction
 from tax_copilot.infra.db.models.base import Base, TimestampMixin
 from tax_copilot.infra.db.models.card_transaction import CardTransaction
 from tax_copilot.infra.db.models.client_company import ClientCompany
+from tax_copilot.infra.db.models.monthly_closing import MonthlyClosing
 from tax_copilot.infra.db.models.receipt import Receipt
 from tax_copilot.infra.db.models.receipt_comment import ReceiptComment
 from tax_copilot.infra.db.models.tax_invoice import TaxInvoice
@@ -23,4 +24,5 @@ __all__ = [
     "TaxInvoice",
     "AccountRule",
     "BankTransaction",
+    "MonthlyClosing",
 ]
