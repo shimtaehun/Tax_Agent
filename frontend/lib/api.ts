@@ -1,4 +1,4 @@
-const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+const BASE = process.env.NEXT_PUBLIC_API_URL ?? "";
 
 function authHeaders(): Record<string, string> {
   if (typeof window === "undefined") return {};
@@ -226,6 +226,73 @@ export async function deleteTaxInvoice(invoiceId: number): Promise<void> {
   });
   handleUnauthorized(res.status);
   if (!res.ok) throw new Error(await parseError(res, "세금계산서 삭제 실패"));
+}
+
+export interface StatementTransactionItem {
+  id: number;
+  client_company_id: number;
+  card_company: string;
+  transaction_date: string | null;
+  transaction_time: string | null;
+  merchant_name: string | null;
+  approval_no: string | null;
+  card_no_masked: string | null;
+  total_amount_krw: number | null;
+  installment_months: number | null;
+  account_code: string | null;
+  cancelled: boolean;
+  status: string;
+  source_filename: string;
+  created_at: string;
+}
+
+export interface StatementListResponse {
+  items: StatementTransactionItem[];
+  total: number;
+}
+
+export interface StatementUploadResponse {
+  card_company: string;
+  imported_count: number;
+  skipped_count: number;
+  total_count: number;
+}
+
+export async function getStatements(
+  clientCompanyId = 1,
+  fromDate?: string,
+  toDate?: string,
+  cardCompany?: string
+): Promise<StatementListResponse> {
+  const params = new URLSearchParams({ client_company_id: String(clientCompanyId), limit: "200" });
+  if (fromDate) params.set("from_date", fromDate);
+  if (toDate) params.set("to_date", toDate);
+  if (cardCompany) params.set("card_company", cardCompany);
+  const res = await fetch(`${BASE}/api/v1/statements?${params.toString()}`, {
+    headers: authHeaders(),
+  });
+  handleUnauthorized(res.status);
+  if (!res.ok) throw new Error(await parseError(res, "카드내역 조회 실패"));
+  return res.json();
+}
+
+export async function uploadStatement(
+  file: File,
+  cardCompany?: string,
+  clientCompanyId = 1
+): Promise<StatementUploadResponse> {
+  const form = new FormData();
+  form.append("file", file);
+  const params = new URLSearchParams({ client_company_id: String(clientCompanyId) });
+  if (cardCompany) params.set("card_company", cardCompany);
+  const res = await fetch(`${BASE}/api/v1/statements/upload?${params.toString()}`, {
+    method: "POST",
+    headers: authHeaders(),
+    body: form,
+  });
+  handleUnauthorized(res.status);
+  if (!res.ok) throw new Error(await parseError(res, "카드내역 업로드 실패"));
+  return res.json();
 }
 
 export async function getMonthlyReport(clientCompanyId: number, month: string): Promise<MonthlyReport> {

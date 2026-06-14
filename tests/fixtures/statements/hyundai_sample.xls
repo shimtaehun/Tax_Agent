@@ -1,0 +1,73 @@
+<!-- 현대카드 실시간 이용내역 export 구조를 본뜬 합성 픽스처 (개인정보 없음) -->
+<script type="text/javascript">var _SITE_SystemMode = "real";</script>
+<html>
+<body>
+<table border="1">
+<tr><th bgcolor="#f2f2f2" colspan="11">실시간 이용내역</th></tr>
+<tr>
+<th bgcolor="#f2f2f2">승인일</th>
+<th bgcolor="#f2f2f2">승인시각</th>
+<th bgcolor="#f2f2f2">카드구분</th>
+<th bgcolor="#f2f2f2">카드종류</th>
+<th bgcolor="#f2f2f2">가맹점명</th>
+<th bgcolor="#f2f2f2">승인금액</th>
+<th bgcolor="#f2f2f2">이용구분</th>
+<th bgcolor="#f2f2f2">할부개월</th>
+<th bgcolor="#f2f2f2">승인번호</th>
+<th bgcolor="#f2f2f2">취소일</th>
+<th bgcolor="#f2f2f2">승인구분</th>
+</tr>
+<tr>
+<td align="center">2026년 06월 11일</td>
+<td align="center">11:57</td>
+<td align="center">
+                        본인
+                    </td>
+<td>4***-****-****-130*</td>
+<td>공간의미</td>
+<td align="right">7,500</td>
+<td align="center">
+                           일시불
+                       </td>
+<td>0</td>
+<td style='mso-number-format:"\@";'>00688404</td>
+<td align="center">-</td>
+<td>
+                           승인
+                       </td>
+</tr>
+<tr>
+<td align="center">2026년 06월 09일</td>
+<td align="center">20:04</td>
+<td align="center">
+                        본인
+                    </td>
+<td>4***-****-****-130*</td>
+<td>뉴모닝마트</td>
+<td align="right">2,650</td>
+<td align="center">
+                           할부
+                       </td>
+<td>3</td>
+<td style='mso-number-format:"\@";'>00111222</td>
+<td align="center">2026년 06월 10일</td>
+<td>
+                           취소
+                       </td>
+</tr>
+<tr>
+<td align="center">-</td>
+<td></td>
+<td></td>
+<td></td>
+<td>총 합계 소계 2건</td>
+<td align="right">10,150</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+</table>
+</body>
+</html>

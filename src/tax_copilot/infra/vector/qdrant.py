@@ -1,17 +1,15 @@
 """Qdrant 벡터 검색 어댑터.
 
-Phase 3: qdrant-client의 in-memory 모드로 시작.
-Phase 5: settings.qdrant_url로 외부 Qdrant 서버 연결.
+컬렉션 구조:
+  tax_laws  — 법령 본문 (부가가치세법, 법인세법 등 조문)
+  tax_cases — 심판례 · 해석례 (tax-tribunal, nts-interpretation)
 
-거래일 기준 필터:
-  effective_from <= as_of_date
-  AND (effective_to > as_of_date OR is_current = true)
+검색 전략: tax_laws 우선 검색 → 결과 부족 시 tax_cases 보완.
 """
 
 from __future__ import annotations
 
 from datetime import date
-from typing import TYPE_CHECKING
 
 from qdrant_client import QdrantClient
 from qdrant_client.models import (
@@ -27,18 +25,16 @@ from qdrant_client.models import (
 
 from tax_copilot.core.rag.schemas import LawChunk
 
-if TYPE_CHECKING:
-    pass
-
 COLLECTION_NAME = "tax_laws"
-EMBEDDING_DIM = 3072
+CASES_COLLECTION = "tax_cases"
+EMBEDDING_DIM = 1024
 
-# 프로세스 단위 싱글턴. 테스트에서는 _reset_client()로 초기화.
+_CASE_SOURCE_IDS = {"tax-tribunal", "nts-interpretation"}
+
 _client: QdrantClient | None = None
 
 
 def get_client(*, in_memory: bool = False, url: str | None = None) -> QdrantClient:
-    """QdrantClient 싱글턴을 반환한다."""
     global _client
     if _client is None:
         if in_memory:
@@ -51,54 +47,51 @@ def get_client(*, in_memory: bool = False, url: str | None = None) -> QdrantClie
 
 
 def reset_client() -> None:
-    """테스트 격리를 위해 싱글턴을 초기화한다."""
     global _client
     _client = None
 
 
+def _create_collection(client: QdrantClient, name: str) -> None:
+    client.create_collection(
+        collection_name=name,
+        vectors_config=VectorParams(size=EMBEDDING_DIM, distance=Distance.COSINE),
+        hnsw_config=HnswConfigDiff(m=16, ef_construct=100),
+    )
+
+
 def ensure_collection(client: QdrantClient) -> None:
-    """컬렉션이 없으면 생성한다."""
+    """두 컬렉션이 없으면 생성한다."""
     existing = {c.name for c in client.get_collections().collections}
-    if COLLECTION_NAME not in existing:
-        client.create_collection(
-            collection_name=COLLECTION_NAME,
-            vectors_config=VectorParams(
-                size=EMBEDDING_DIM,
-                distance=Distance.COSINE,
-            ),
-            hnsw_config=HnswConfigDiff(m=16, ef_construct=100),
-        )
+    for name in (COLLECTION_NAME, CASES_COLLECTION):
+        if name not in existing:
+            _create_collection(client, name)
 
 
 def recreate_collection(client: QdrantClient) -> None:
-    """기존 RAG 컬렉션을 삭제하고 현재 임베딩 차원으로 다시 생성한다."""
+    """두 컬렉션을 삭제하고 다시 생성한다."""
     existing = {c.name for c in client.get_collections().collections}
-    if COLLECTION_NAME in existing:
-        client.delete_collection(collection_name=COLLECTION_NAME)
-    client.create_collection(
-        collection_name=COLLECTION_NAME,
-        vectors_config=VectorParams(
-            size=EMBEDDING_DIM,
-            distance=Distance.COSINE,
-        ),
-        hnsw_config=HnswConfigDiff(m=16, ef_construct=100),
-    )
+    for name in (COLLECTION_NAME, CASES_COLLECTION):
+        if name in existing:
+            client.delete_collection(collection_name=name)
+        _create_collection(client, name)
 
 
 def upsert_chunks(
     client: QdrantClient,
     chunks: list[LawChunk],
     vectors: list[list[float]],
+    batch_size: int = 200,
 ) -> None:
-    """법령 chunk와 임베딩 벡터를 Qdrant에 저장한다."""
+    """법령 chunk를 law_id 기준으로 tax_laws / tax_cases에 분리 저장한다."""
     ensure_collection(client)
 
-    # chunk_id를 정수 ID로 변환 (hash 사용)
-    # 날짜를 YYYYMMDD 정수로 저장 — Qdrant Range 필터는 숫자만 지원
-    _NO_EXPIRY = 99991231  # effective_to=None(현행법) 대용값
+    _NO_EXPIRY = 99991231
 
-    points = [
-        PointStruct(
+    law_points: list[PointStruct] = []
+    case_points: list[PointStruct] = []
+
+    for chunk, vector in zip(chunks, vectors, strict=True):
+        point = PointStruct(
             id=abs(hash(chunk.chunk_id)) % (2**31),
             vector=vector,
             payload={
@@ -120,60 +113,68 @@ def upsert_chunks(
                 "content_hash": chunk.content_hash,
             },
         )
-        for chunk, vector in zip(chunks, vectors, strict=True)
+        if chunk.law_id in _CASE_SOURCE_IDS:
+            case_points.append(point)
+        else:
+            law_points.append(point)
+
+    for collection, points in ((COLLECTION_NAME, law_points), (CASES_COLLECTION, case_points)):
+        for i in range(0, len(points), batch_size):
+            client.upsert(collection_name=collection, points=points[i : i + batch_size])
+
+    print(f"  법령 본문: {len(law_points)}건 → {COLLECTION_NAME}")
+    print(f"  심판례/해석례: {len(case_points)}건 → {CASES_COLLECTION}")
+
+
+def _query_collection(
+    client: QdrantClient,
+    collection: str,
+    query_vector: list[float],
+    as_of_date: date,
+    top_k: int,
+    score_threshold: float,
+) -> list[dict]:
+    as_of_int = float(int(as_of_date.strftime("%Y%m%d")))
+    must = [FieldCondition(key="effective_from_int", range=Range(lte=as_of_int))]
+    should = [
+        FieldCondition(key="effective_to_int", range=Range(gt=as_of_int)),
+        FieldCondition(key="is_current", match=MatchValue(value=True)),
     ]
-    client.upsert(collection_name=COLLECTION_NAME, points=points)
+    response = client.query_points(
+        collection_name=collection,
+        query=query_vector,
+        query_filter=Filter(must=must, should=should),
+        limit=top_k,
+        with_payload=True,
+    )
+    return [
+        {**hit.payload, "score": hit.score}
+        for hit in response.points
+        if hit.payload is not None and hit.score >= score_threshold
+    ]
 
 
 def search_by_date(
     client: QdrantClient,
     query_vector: list[float],
     as_of_date: date,
-    top_k: int = 5,
+    top_k: int = 3,
+    score_threshold: float = 0.45,
 ) -> list[dict]:
-    """거래일 기준 법령 chunk를 검색한다.
-
-    필터 조건:
-      effective_from <= as_of_date
-      AND (effective_to > as_of_date OR is_current = true)
-    """
-    # YYYYMMDD 정수로 비교
-    as_of_int = float(int(as_of_date.strftime("%Y%m%d")))
-
-    # effective_from_int <= as_of_date
-    must = [
-        FieldCondition(
-            key="effective_from_int",
-            range=Range(lte=as_of_int),
-        )
-    ]
-
-    # effective_to_int > as_of_date (현행법은 99991231로 저장되어 항상 통과)
-    should = [
-        FieldCondition(
-            key="effective_to_int",
-            range=Range(gt=as_of_int),
-        ),
-        FieldCondition(
-            key="is_current",
-            match=MatchValue(value=True),
-        ),
-    ]
-
-    # qdrant-client 1.12+: search() → query_points()
-    response = client.query_points(
-        collection_name=COLLECTION_NAME,
-        query=query_vector,
-        query_filter=Filter(must=must, should=should),
-        limit=top_k,
-        with_payload=True,
+    """법령 본문 우선 검색. 결과가 부족하면 심판례로 보완한다."""
+    results = _query_collection(
+        client, COLLECTION_NAME, query_vector, as_of_date, top_k, score_threshold
     )
 
-    return [
-        {
-            **hit.payload,
-            "score": hit.score,
-        }
-        for hit in response.points
-        if hit.payload is not None
-    ]
+    if len(results) < 2:
+        cases = _query_collection(
+            client,
+            CASES_COLLECTION,
+            query_vector,
+            as_of_date,
+            top_k - len(results),
+            score_threshold,
+        )
+        results = results + cases
+
+    return results

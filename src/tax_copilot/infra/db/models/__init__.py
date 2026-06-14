@@ -1,5 +1,6 @@
 from tax_copilot.infra.db.models.audit_event import AuditEvent
 from tax_copilot.infra.db.models.base import Base, TimestampMixin
+from tax_copilot.infra.db.models.card_transaction import CardTransaction
 from tax_copilot.infra.db.models.client_company import ClientCompany
 from tax_copilot.infra.db.models.receipt import Receipt
 from tax_copilot.infra.db.models.receipt_comment import ReceiptComment
@@ -14,6 +15,7 @@ __all__ = [
     "ClientCompany",
     "User",
     "Receipt",
+    "CardTransaction",
     "AuditEvent",
     "ReceiptComment",
     "TaxInvoice",

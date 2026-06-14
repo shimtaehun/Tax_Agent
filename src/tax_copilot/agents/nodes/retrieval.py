@@ -12,13 +12,29 @@ from tax_copilot.core.exceptions import ExternalServiceError
 _CORPUS_VERSION = "phase3-v1"
 
 
+_EVIDENCE_QUERY: dict[str, str] = {
+    # 한국어 키 (법령 내 용어)
+    "세금계산서": "세금계산서 매입세액 공제 요건 필요적 기재사항",
+    "신용카드영수증": "신용카드 매입세액 공제 사업 관련 지출",
+    "현금영수증": "현금영수증 매입세액 공제 사업자",
+    "간이영수증": "간이영수증 매입세액 공제 불공제",
+    "계산서": "계산서 면세 매입세액 불공제",
+    # 영어 키 (Gemini Vision 출력 형식)
+    "tax_invoice": "세금계산서 매입세액 공제 요건 필요적 기재사항",
+    "credit_card_slip": "신용카드 매입세액 공제 사업 관련 지출",
+    "cash_receipt": "현금영수증 매입세액 공제 사업자",
+    "simple_receipt": "간이영수증 매입세액 공제 불공제",
+    "receipt": "부가가치세 매입세액 공제 요건 영수증 사업 관련성",
+    "invoice": "계산서 면세 매입세액 불공제",
+}
+
+
 async def build_retrieval_query_node(state: AgentState) -> dict:
     """parsed_receipt 기반으로 법령 검색 쿼리를 생성한다."""
     parsed = state.get("parsed_receipt") or {}
     evidence_type = parsed.get("evidence_type", "unknown")
-    payment_method = parsed.get("payment_method", "")
 
-    query = f"부가세 매입세액 공제 {evidence_type} {payment_method}".strip()
+    query = _EVIDENCE_QUERY.get(evidence_type, "부가가치세 매입세액 공제 요건 사업 관련성")
     return {"retrieval_query": query}
 
 

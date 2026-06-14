@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     gemini_api_key: str = Field(default="")
     law_api_key: str = Field(default="")  # 법제처 Open API OC 키
     qdrant_url: str = Field(default="http://localhost:6333")
+    embedding_url: str = Field(default="http://220.80.16.79:11111")
     storage_backend: str = Field(default="local")
     local_storage_path: str = Field(default="./uploads")
     frontend_url: str = Field(default="http://localhost:3000")

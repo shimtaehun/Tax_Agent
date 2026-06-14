@@ -18,7 +18,7 @@ from tax_copilot.infra.vector.qdrant import get_client, search_by_date
 async def search_tax_law(
     query: str,
     as_of_date: date,
-    top_k: int = 5,
+    top_k: int = 3,
 ) -> list[dict]:
     """거래일 기준으로 관련 법령 chunk를 검색한다.
 

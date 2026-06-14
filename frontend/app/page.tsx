@@ -52,6 +52,7 @@ export default function Home() {
   const [processingReceipts, setProcessingReceipts] = useState<ReceiptStatus[]>([]);
   const [selected, setSelected] = useState<ReviewItem | null>(null);
   const [comment, setComment] = useState("");
+  const [commentError, setCommentError] = useState("");
   const [deciding, setDeciding] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadMsg, setUploadMsg] = useState("");
@@ -141,6 +142,11 @@ export default function Home() {
 
   async function handleDecide(approved: boolean) {
     if (!selected) return;
+    if (!approved && !comment.trim()) {
+      setCommentError("반려 시 검토 의견을 입력해야 합니다.");
+      return;
+    }
+    setCommentError("");
     setDeciding(true);
     try {
       await decide(selected.receipt_id, approved, comment);
@@ -515,19 +521,23 @@ export default function Home() {
               </button>
 
               <div style={{ marginBottom: 16 }}>
-                <label style={{ display: "block", color: "var(--muted)", fontWeight: 700, fontSize: 14, marginBottom: 6 }}>
-                  검토 의견 (선택)
+                <label style={{ display: "block", color: commentError ? "var(--danger)" : "var(--muted)", fontWeight: 700, fontSize: 14, marginBottom: 6 }}>
+                  검토 의견 <span style={{ color: "var(--muted)", fontWeight: 400 }}>(반려 시 필수)</span>
                 </label>
                 <textarea
                   value={comment}
-                  onChange={(e) => setComment(e.target.value)}
+                  onChange={(e) => { setComment(e.target.value); if (e.target.value.trim()) setCommentError(""); }}
                   placeholder="승인 또는 반려 사유를 입력하세요..."
                   style={{
                     width: "100%", padding: "10px 12px",
-                    border: "1px solid var(--line)", borderRadius: 6,
+                    border: `1px solid ${commentError ? "var(--danger)" : "var(--line)"}`,
+                    borderRadius: 6,
                     fontSize: 14, resize: "vertical", minHeight: 80, fontFamily: "inherit",
                   }}
                 />
+                {commentError && (
+                  <p style={{ margin: "4px 0 0", fontSize: 12, color: "var(--danger)" }}>{commentError}</p>
+                )}
               </div>
 
               <div className="actions">

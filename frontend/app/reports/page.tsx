@@ -15,13 +15,14 @@ const money = (value: number) => `${value.toLocaleString("ko-KR")}원`;
 const compactWon = (value: number) =>
   value >= 10000 ? `${Math.round(value / 10000).toLocaleString("ko-KR")}만` : value.toLocaleString("ko-KR");
 
-function currentMonth() {
+function defaultMonth() {
   const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  return `${prev.getFullYear()}-${String(prev.getMonth() + 1).padStart(2, "0")}`;
 }
 
 export default function ReportsPage() {
-  const [month, setMonth] = useState(currentMonth());
+  const [month, setMonth] = useState(defaultMonth());
   const [report, setReport] = useState<MonthlyReport | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");

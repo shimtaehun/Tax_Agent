@@ -3,7 +3,7 @@
 import { ReactNode } from "react";
 import { logout } from "../../lib/api";
 
-type NavKey = "reviews" | "history" | "tax-invoices" | "reports";
+type NavKey = "reviews" | "history" | "tax-invoices" | "statements" | "reports";
 
 const ICONS: Record<NavKey, ReactNode> = {
   reviews: (
@@ -28,6 +28,13 @@ const ICONS: Record<NavKey, ReactNode> = {
       <path d="M8 13h8M8 17h5" />
     </svg>
   ),
+  statements: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="2" y="5" width="20" height="14" rx="2" />
+      <path d="M2 10h20" />
+      <path d="M6 15h4" />
+    </svg>
+  ),
   reports: (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
       <path d="M3 3v18h18" />
@@ -42,6 +49,7 @@ const NAV: { key: NavKey; href: string; label: string }[] = [
   { key: "reviews", href: "/", label: "영수증 검토" },
   { key: "history", href: "/history", label: "처리 완료" },
   { key: "tax-invoices", href: "/tax-invoices", label: "세금계산서" },
+  { key: "statements", href: "/statements", label: "카드내역" },
   { key: "reports", href: "/reports", label: "월별 리포트" },
 ];
 
