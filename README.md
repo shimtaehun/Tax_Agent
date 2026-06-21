@@ -68,23 +68,17 @@
 
 <img src="docs/assets/screenshots/01-receipt-review.png" alt="영수증 검토 — AI 판단 초안 + 법령 검색 + 세무사 승인" width="900" />
 
-<br/><br/>
-
 #### 📄 세금계산서 관리
 
 <sub>홈택스 전자세금계산서 XML/CSV import, 매입·매출 분류, 세액 집계</sub>
 
 <img src="docs/assets/screenshots/02-tax-invoices.png" alt="세금계산서 관리 — 홈택스 XML/CSV import" width="900" />
 
-<br/><br/>
-
 #### 💳 카드내역 관리
 
 <sub>카드사 엑셀 업로드, 거래처별 계정과목 자동 분류·학습</sub>
 
 <img src="docs/assets/screenshots/03-card-statements.png" alt="카드내역 관리 — 카드사 엑셀 import + 계정과목 자동 분류" width="900" />
-
-<br/><br/>
 
 #### 📊 월별 마감 리포트
 
