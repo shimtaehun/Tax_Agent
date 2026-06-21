@@ -23,7 +23,7 @@
 
 <br/>
 
-`1인 개발`  ·  백엔드 · AI 파이프라인 · 프론트엔드  ·  테스트 166개  ·  2026.05 ~
+`1인 개발`  ·  백엔드 · AI 파이프라인 · 프론트엔드  ·  테스트 240여 개  ·  2026.05 ~
 
 </div>
 
@@ -38,7 +38,9 @@
 
 ## 📑 목차
 
+- [🖥 화면 미리보기](#-화면-미리보기)
 - [✨ 주요 기능](#-주요-기능)
+- [⚙️ 반복 업무 자동화 5종](#️-반복-업무-자동화-5종)
 - [🧱 아키텍처](#-아키텍처)
 - [🛠 기술 스택](#-기술-스택)
 - [🗄 데이터베이스 구조](#-데이터베이스-구조)
@@ -49,6 +51,37 @@
 - [🔌 API 엔드포인트](#-api-엔드포인트)
 - [📦 배포 (Render)](#-배포-render)
 - [🗂 Phase별 구현 내용](#-phase별-구현-내용)
+
+<br/>
+
+---
+
+## 🖥 화면 미리보기
+
+> Next.js 15 App Router 기반의 다크 셸 UI. 영수증 검토(HITL) · 세금계산서 · 카드내역 · 월별 마감 리포트를 한 워크스페이스에서 다룹니다.
+
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="docs/assets/screenshots/01-receipt-review.png" alt="영수증 검토 — AI 판단 초안 + 법령 검색 + 세무사 승인" />
+      <p align="center"><b>🧾 영수증 검토 (HITL)</b><br/><sub>Gemini Vision 파싱 → 법령 RAG 인용 → AI 판단 초안 → 세무사 승인/반려</sub></p>
+    </td>
+    <td width="50%" valign="top">
+      <img src="docs/assets/screenshots/02-tax-invoices.png" alt="세금계산서 관리 — 홈택스 XML/CSV import" />
+      <p align="center"><b>📄 세금계산서 관리</b><br/><sub>홈택스 전자세금계산서 XML/CSV import, 매입·매출 분류, 세액 집계</sub></p>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="docs/assets/screenshots/03-card-statements.png" alt="카드내역 관리 — 카드사 엑셀 import + 계정과목 자동 분류" />
+      <p align="center"><b>💳 카드내역 관리</b><br/><sub>카드사 엑셀 업로드, 거래처별 계정과목 자동 분류·학습</sub></p>
+    </td>
+    <td width="50%" valign="top">
+      <img src="docs/assets/screenshots/04-monthly-report.png" alt="월별 마감 리포트 — 매입·매출세액, 예상 납부세액, AI 요약" />
+      <p align="center"><b>📊 월별 마감 리포트</b><br/><sub>매입·매출세액·예상 납부세액 정산, 시각화, AI 리포트 요약 + HTML 다운로드</sub></p>
+    </td>
+  </tr>
+</table>
 
 <br/>
 
@@ -67,6 +100,25 @@
 - **신고 기한 관리**: 한 해 신고 기한 일괄 생성 및 완료 추적
 - **월간 정산 리포트**: 영수증·세금계산서 지표를 인쇄용 HTML(PDF 저장)로 출력
 - **고객사 포털**: client 역할 전용 대시보드 (영수증 상태 집계)
+
+<br/>
+
+---
+
+## ⚙️ 반복 업무 자동화 5종
+
+세무사가 매달 손으로 반복하던 노동을 직접 줄이는 기능 묶음입니다. 핵심 판단 로직은 모두 `core/`의 **순수 함수**(외부 라이브러리 없음, 단위 테스트 100%)로 두고, API·worker는 호출만 합니다.
+
+| # | 기능 | 무엇을 자동화하나 | 핵심 모듈 |
+|---|------|------------------|-----------|
+| **F1** | **분개(전표) 자동 생성 + CSV export** | 승인된 영수증·세금계산서를 복식부기 차/대변 전표로 변환, 더존·세무사랑이 그대로 읽는 일반전표 CSV(UTF-8 BOM)로 내보내 "재입력" 단계를 제거 | `core/tax/journal.py`, `journal_export.py` |
+| **F2** | **거래처별 계정과목 규칙 학습** | 가맹점→계정과목을 한 번 정하면 다음부터 자동 적용 (완전일치 > 부분포함 우선, 키워드 분류기보다 우선) | `core/tax/account_rules.py` |
+| **F3** | **삼중 대사 (통장↔카드↔세금계산서)** | 통장 입출금을 카드·세금계산서 기반 예상 현금흐름과 매칭, "근거 없는 입출금"·"통장 미반영"만 추려냄 | `core/tax/reconciliation.py`, `core/bank.py` |
+| **F4** | **누락 증빙 감지 + 고객 요청 문구** | 카드 결제 중 대응 영수증이 없는 건을 가려내고, 고객에게 보낼 요청 문구까지 생성 | `core/tax/missing_evidence.py` |
+| **F5** | **고객사별 월마감 체크리스트** | 매달 반복되는 마감 절차를 표준 8단계 템플릿(자료수집→검토→분류→대사→누락증빙→집계→분개→신고)으로 만들고 진행률 추적 | `core/tax/monthly_closing.py` |
+
+> [!NOTE]
+> F1~F5는 도메인·API·마이그레이션(0010~0012)·테스트까지 구현되어 있습니다. 분개 미리보기·대사 보드·누락 증빙·월마감 체크리스트의 전용 프론트엔드 화면은 후속 작업입니다.
 
 <br/>
 
@@ -214,6 +266,7 @@ erDiagram
 
 > [!NOTE]
 > `audit_events`는 모든 상태 전이와 AI 판단 이력을 남기는 **삭제 금지** 테이블입니다. `receipts`는 `(tenant_id, file_hash)` 복합 UNIQUE로 동일 파일 중복 처리를 막습니다.
+> 자동화 5종을 위해 `card_transactions`(카드내역), `account_rules`(계정과목 학습 규칙), `bank_transactions`(통장 거래), `monthly_closings`(월마감 체크리스트) 테이블이 마이그레이션 0009~0012로 추가되었습니다.
 
 <br/>
 
@@ -327,7 +380,7 @@ FRONTEND_URL=http://localhost:3000
 ## 🧪 테스트
 
 ```bash
-# 전체 테스트 (166개)
+# 전체 테스트 (240여 개)
 PYTHONPATH=src pytest
 
 # 특정 모듈
@@ -336,7 +389,7 @@ PYTHONPATH=src pytest tests/test_vision.py -v
 PYTHONPATH=src pytest tests/test_rag.py -v
 ```
 
-주요 테스트 파일 (총 21개 파일, 166개 테스트):
+주요 테스트 파일 (총 32개 파일, 240여 개 테스트):
 
 | 파일 | 테스트 수 | 내용 |
 |------|---------|------|
@@ -351,7 +404,12 @@ PYTHONPATH=src pytest tests/test_rag.py -v
 | test_deadlines.py | 9 | 신고 기한 생성·완료 |
 | test_client_role.py | 7 | 고객 포털 역할 기반 접근 |
 | test_tax_invoices.py | 5 | 세금계산서 import·수정·삭제 |
-| 그 외 | 28 | explanation, batch, comments, sse, portal, law_open_data 등 |
+| test_journal.py | 12 | 분개 차/대변 균형, 공제/불공제, CSV export |
+| test_reconciliation.py | 10 | 삼중 대사 그리디 매칭 |
+| test_account_rules.py | 6 | 거래처 규칙 우선순위·학습 |
+| test_missing_evidence.py | 5 | 카드↔영수증 누락 매칭 |
+| test_monthly_closing.py | 5 | 월마감 단계 템플릿·진행률 |
+| 그 외 | 그 외 | explanation, batch, comments, sse, portal, statements, law_open_data 등 |
 
 <br/>
 
@@ -371,6 +429,14 @@ PYTHONPATH=src pytest tests/test_rag.py -v
 | GET | /api/v1/deadlines | 신고 기한 목록 |
 | POST | /api/v1/deadlines/generate | 한 해 신고 기한 일괄 생성 |
 | POST | /api/v1/tax-invoices/upload | 홈택스 세금계산서 import |
+| POST | /api/v1/statements/upload | 카드사 엑셀 카드내역 import |
+| GET | /api/v1/journal/entries | 분개(전표) 미리보기 |
+| GET | /api/v1/journal/export.csv | 회계프로그램용 일반전표 CSV |
+| GET / POST / DELETE | /api/v1/account-rules | 거래처별 계정과목 규칙 |
+| POST | /api/v1/bank/upload | 통장 거래내역 import |
+| GET | /api/v1/bank/reconciliation | 삼중 대사 결과 |
+| GET | /api/v1/missing-evidence | 누락 증빙 목록 + 요청 문구 |
+| POST / GET | /api/v1/monthly-closings | 월마감 체크리스트 |
 | GET | /api/v1/monthly-reports | 월간 정산 지표 |
 | GET | /api/v1/portal/dashboard | 고객사 대시보드 (client 전용) |
 | GET | /healthz | 헬스체크 |
@@ -405,7 +471,8 @@ PYTHONPATH=src pytest tests/test_rag.py -v
 | 4 | Gemini Vision structured output, Pillow 품질 체크, risk_flags |
 | 5 | Celery + Redis 분산 락, acks_late idempotency |
 | 6 | Next.js UI, CORS, render.yaml, README |
-| 7+ | 세금계산서 관리, 부가세 집계, 리스크 스코어링, 신고 기한, 월간 리포트, 고객 포털 |
+| 7 | 세금계산서 관리, 부가세 집계, 리스크 스코어링, 신고 기한, 월간 리포트, 고객 포털 |
+| 8 | 카드내역 import + 계정과목 분류, 반복 업무 자동화 5종(분개·규칙학습·삼중대사·누락증빙·월마감), 다크 셸 프론트엔드 |
 
 <br/>
 
