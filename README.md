@@ -60,28 +60,39 @@
 
 > Next.js 15 App Router 기반의 다크 셸 UI. 영수증 검토(HITL) · 세금계산서 · 카드내역 · 월별 마감 리포트를 한 워크스페이스에서 다룹니다.
 
-<table>
-  <tr>
-    <td width="50%" valign="top">
-      <img src="docs/assets/screenshots/01-receipt-review.png" alt="영수증 검토 — AI 판단 초안 + 법령 검색 + 세무사 승인" />
-      <p align="center"><b>🧾 영수증 검토 (HITL)</b><br/><sub>Gemini Vision 파싱 → 법령 RAG 인용 → AI 판단 초안 → 세무사 승인/반려</sub></p>
-    </td>
-    <td width="50%" valign="top">
-      <img src="docs/assets/screenshots/02-tax-invoices.png" alt="세금계산서 관리 — 홈택스 XML/CSV import" />
-      <p align="center"><b>📄 세금계산서 관리</b><br/><sub>홈택스 전자세금계산서 XML/CSV import, 매입·매출 분류, 세액 집계</sub></p>
-    </td>
-  </tr>
-  <tr>
-    <td width="50%" valign="top">
-      <img src="docs/assets/screenshots/03-card-statements.png" alt="카드내역 관리 — 카드사 엑셀 import + 계정과목 자동 분류" />
-      <p align="center"><b>💳 카드내역 관리</b><br/><sub>카드사 엑셀 업로드, 거래처별 계정과목 자동 분류·학습</sub></p>
-    </td>
-    <td width="50%" valign="top">
-      <img src="docs/assets/screenshots/04-monthly-report.png" alt="월별 마감 리포트 — 매입·매출세액, 예상 납부세액, AI 요약" />
-      <p align="center"><b>📊 월별 마감 리포트</b><br/><sub>매입·매출세액·예상 납부세액 정산, 시각화, AI 리포트 요약 + HTML 다운로드</sub></p>
-    </td>
-  </tr>
-</table>
+<div align="center">
+
+#### 🧾 영수증 검토 (HITL)
+
+<sub>Gemini Vision 파싱 → 법령 RAG 인용 → AI 판단 초안 → 세무사 승인/반려</sub>
+
+<img src="docs/assets/screenshots/01-receipt-review.png" alt="영수증 검토 — AI 판단 초안 + 법령 검색 + 세무사 승인" width="900" />
+
+<br/><br/>
+
+#### 📄 세금계산서 관리
+
+<sub>홈택스 전자세금계산서 XML/CSV import, 매입·매출 분류, 세액 집계</sub>
+
+<img src="docs/assets/screenshots/02-tax-invoices.png" alt="세금계산서 관리 — 홈택스 XML/CSV import" width="900" />
+
+<br/><br/>
+
+#### 💳 카드내역 관리
+
+<sub>카드사 엑셀 업로드, 거래처별 계정과목 자동 분류·학습</sub>
+
+<img src="docs/assets/screenshots/03-card-statements.png" alt="카드내역 관리 — 카드사 엑셀 import + 계정과목 자동 분류" width="900" />
+
+<br/><br/>
+
+#### 📊 월별 마감 리포트
+
+<sub>매입·매출세액·예상 납부세액 정산, 시각화, AI 리포트 요약 + HTML 다운로드</sub>
+
+<img src="docs/assets/screenshots/04-monthly-report.png" alt="월별 마감 리포트 — 매입·매출세액, 예상 납부세액, AI 요약" width="900" />
+
+</div>
 
 <br/>
 
